@@ -1,0 +1,19 @@
+vendor/*
+bin/*
+dist/*
+path/to/*
+
+# Go coverage directories (GOCOVERDIR)
+.cover/
+coverage.out
+coverage.txt
+*.cover.out
+*_coverage.out
+unit.out
+int.out
+
+*.test
+*.exe
+.env
+
+.task/*

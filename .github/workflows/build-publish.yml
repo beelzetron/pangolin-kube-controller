@@ -1,0 +1,297 @@
+name: Build & Publish Container
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: SemVer tag (e.g. 1.4.0 or 1.4.0-rc.1)
+        required: true
+        type: string
+      publish_latest:
+        description: Also publish the 'latest' tag (ignored for pre-release)
+        required: false
+        default: false
+        type: boolean
+      publish_minor:
+        description: Also publish the 'major.minor' tag (ignored for pre-release)
+        required: false
+        default: false
+        type: boolean
+    secrets:
+      COSIGN_PRIVATE_KEY:
+        required: false
+      COSIGN_PASSWORD:
+        required: false
+      DOCKER_HUB_ACCESS_TOKEN:
+        required: false
+    outputs:
+      digest:
+        description: Image digest
+        value: ${{ jobs.publish.outputs.digest }}
+      sbom:
+        description: SBOM path
+        value: ${{ jobs.publish.outputs.sbom }}
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      contents: write          # create GitHub release
+      packages: write          # push container images
+      security-events: write   # upload Trivy SARIF
+      attestations: write      # build provenance attestations
+      id-token: write          # OIDC for signing/attest
+    outputs:
+      digest: ${{ steps.run-release.outputs.digest }}
+      sbom: ${{ steps.run-release.outputs.sbom }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          ref: refs/tags/${{ inputs.tag }}
+
+      - name: Validate tag format
+        shell: bash
+        env:
+          TAG_VALUE: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [[ ! ${TAG_VALUE} =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
+            echo "Tag ${TAG_VALUE} is not valid SemVer" >&2
+            exit 1
+          fi
+          echo "TAG=${TAG_VALUE}" >> "$GITHUB_ENV"
+
+      - name: Detect pre-release
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${TAG}" == *-* ]]; then
+            echo "IS_PRERELEASE=true" >> "$GITHUB_ENV"
+          else
+            echo "IS_PRERELEASE=false" >> "$GITHUB_ENV"
+          fi
+
+      - name: Resolve publish flags
+        shell: bash
+        env:
+          INPUT_LATEST: ${{ inputs.publish_latest }}
+          INPUT_MINOR: ${{ inputs.publish_minor }}
+          VAR_LATEST: ${{ vars.PUBLISH_LATEST || 'false' }}
+          VAR_MINOR: ${{ vars.PUBLISH_MINOR || 'false' }}
+        run: |
+          set -euo pipefail
+          latest="$VAR_LATEST"
+          minor="$VAR_MINOR"
+          # Override with explicit inputs when provided via caller
+          if [[ -n "${INPUT_LATEST}" ]]; then
+            latest="${INPUT_LATEST}"
+          fi
+          if [[ -n "${INPUT_MINOR}" ]]; then
+            minor="${INPUT_MINOR}"
+          fi
+          if [[ "$IS_PRERELEASE" == "true" ]]; then
+            latest="false"
+            minor="false"
+          fi
+          echo "PUBLISH_LATEST=${latest}" >> "$GITHUB_ENV"
+          echo "PUBLISH_MINOR=${minor}" >> "$GITHUB_ENV"
+
+      - name: Capture build metadata timestamp
+        shell: bash
+        run: echo "IMAGE_CREATED=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Resolve registry image names
+        shell: bash
+        env:
+          GHCR_IMAGE_VAR: ${{ vars.GHCR_IMAGE }}
+          DOCKER_HUB_IMAGE_VAR: ${{ vars.DOCKER_HUB_IMAGE }}
+          DOCKER_HUB_USER_VAR: ${{ vars.DOCKER_HUB_USERNAME }}
+        run: |
+          set -euo pipefail
+          repo_name="${GITHUB_REPOSITORY#*/}"
+          owner_lower="${GITHUB_REPOSITORY_OWNER,,}"
+          ghcr_image="$GHCR_IMAGE_VAR"
+          if [[ -z "$ghcr_image" ]]; then
+            ghcr_image="ghcr.io/${owner_lower}/${repo_name}"
+          fi
+          dockerhub_image="$DOCKER_HUB_IMAGE_VAR"
+          if [[ -z "$dockerhub_image" && -n "$DOCKER_HUB_USER_VAR" ]]; then
+            dockerhub_image="docker.io/${DOCKER_HUB_USER_VAR}/${repo_name}"
+          fi
+          echo "GHCR_IMAGE=${ghcr_image,,}" >> "$GITHUB_ENV"
+          echo "DOCKERHUB_IMAGE=${dockerhub_image,,}" >> "$GITHUB_ENV"
+
+      - name: Show release configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Tag:        ${TAG}"
+          echo "Is RC:      ${IS_PRERELEASE}"
+          echo "GHCR image: ${GHCR_IMAGE}"
+          echo "DockerHub:  ${DOCKERHUB_IMAGE:-<not configured>}"
+          echo "Publish latest: ${PUBLISH_LATEST}"
+          echo "Publish minor:  ${PUBLISH_MINOR}"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub
+        if: env.DOCKERHUB_IMAGE != ''
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
+        with:
+          registry: docker.io
+          username: ${{ vars.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+
+      - name: Install Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: go.mod
+
+      - name: Go vet & tests
+        run: |
+          go vet ./...
+          go test ./... -race -covermode=atomic
+        shell: bash
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad # v4.0.0
+        with:
+          cosign-release: v3.0.2
+
+      - name: Install Trivy CLI
+        uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 # v0.2.5
+        with:
+          version: v0.68.2
+
+      - name: Ensure release script permissions
+        run: chmod +x hack/scripts/release.sh
+
+      - name: Run release pipeline
+        id: run-release
+        shell: bash
+        env:
+          ARTIFACT_DIR: artifacts
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARTIFACT_DIR"
+          RELEASE_ENV="$RUNNER_TEMP/release.env"
+          cmd=("./hack/scripts/release.sh" \
+            --version "${TAG}" \
+            --platforms "linux/amd64,linux/arm64" \
+            --image "${GHCR_IMAGE}" \
+            --sbom-path "${ARTIFACT_DIR}/sbom-${TAG}.spdx.json" \
+            --trivy-format sarif \
+            --trivy-output "${ARTIFACT_DIR}/trivy-${TAG}.sarif" \
+            --output-file "$RELEASE_ENV")
+          if [[ -n "${DOCKERHUB_IMAGE}" ]]; then
+            cmd+=(--image "${DOCKERHUB_IMAGE}")
+          fi
+          if [[ "${PUBLISH_LATEST}" == "true" ]]; then
+            cmd+=(--publish-latest)
+          fi
+          if [[ "${PUBLISH_MINOR}" == "true" ]]; then
+            cmd+=(--publish-minor)
+          fi
+          if [[ -n "${COSIGN_PRIVATE_KEY}" ]]; then
+            cmd+=(--cosign-key env://COSIGN_PRIVATE_KEY)
+          fi
+          "${cmd[@]}"
+          cat "$RELEASE_ENV" >> "$GITHUB_ENV"
+          while IFS='=' read -r key value; do
+            case "$key" in
+              DIGEST)
+                echo "digest=$value" >> "$GITHUB_OUTPUT" ;;
+              PRIMARY_DIGEST_REF)
+                echo "primary_ref=$value" >> "$GITHUB_OUTPUT" ;;
+              SBOM_PATH)
+                echo "sbom=$value" >> "$GITHUB_OUTPUT" ;;
+              TRIVY_REPORT)
+                echo "scan_report=$value" >> "$GITHUB_OUTPUT" ;;
+            esac
+          done < "$RELEASE_ENV"
+
+      - name: Compute image digest references
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "GHCR_REF=${GHCR_IMAGE}@${DIGEST}" >> "$GITHUB_ENV"
+          if [[ -n "${DOCKERHUB_IMAGE}" ]]; then
+            echo "DOCKERHUB_REF=${DOCKERHUB_IMAGE}@${DIGEST}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Attest build provenance (GHCR)
+        if: env.GHCR_IMAGE != ''
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-name: ${{ env.GHCR_IMAGE }}
+          subject-digest: ${{ env.DIGEST }}
+          push-to-registry: true
+
+      - name: Attest build provenance (Docker Hub)
+        if: env.DOCKERHUB_REF != ''
+        continue-on-error: true
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-name: ${{ env.DOCKERHUB_IMAGE }}
+          subject-digest: ${{ env.DIGEST }}
+          push-to-registry: true
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: sbom-${{ env.TAG }}
+          path: ${{ env.SBOM_PATH }}
+
+      - name: Upload Trivy SARIF
+        if: env.TRIVY_REPORT != ''
+        uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4.32.6
+        with:
+          sarif_file: ${{ env.TRIVY_REPORT }}
+          category: container-image
+
+      - name: Prepare release notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat <<NOTES > release-notes.md
+          ## Container Images
+          - GHCR: ${GHCR_REF}
+          - Docker Hub: ${DOCKERHUB_REF:-N/A}
+
+          Digest: ${DIGEST}
+          NOTES
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2.5.0
+        with:
+          tag_name: ${{ inputs.tag }}
+          generate_release_notes: true
+          prerelease: ${{ env.IS_PRERELEASE == 'true' }}
+          body_path: release-notes.md
+          files: ${{ steps.run-release.outputs.sbom }}
+
+      - name: Upload release artifacts
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: release-artifacts-${{ inputs.tag }}
+          path: artifacts

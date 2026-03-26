@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Pangolin Discussions
+    url: https://github.com/fosrl/pangolin-kube-controller/discussions
+    about: Ask questions, share ideas, and request general support
+  - name: Security Issues
+    url: https://github.com/fosrl/pangolin-kube-controller/security/policy
+    about: Report vulnerabilities privately (see SECURITY.md)

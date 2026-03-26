@@ -1,0 +1,62 @@
+name: DeepSource Coverage
+
+on:
+  #push:
+  #  # Run on all branches except main and dev (covered by main CI)
+  #  branches-ignore: [main, dev]
+  pull_request:
+    # Run on PRs except those targeting main or dev (covered by main CI)
+    branches-ignore: [main, dev]
+  workflow_dispatch:
+  #workflow_call:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  coverage:
+    name: Run tests and report coverage to DeepSource
+    runs-on: ubuntu-latest
+    env:
+      # Expose DSN via env for conditional checks without referencing `secrets` in expressions
+      DEEPSOURCE_DSN: ${{ secrets.DEEPSOURCE_DSN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Setup Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: go.mod
+
+      - name: Ensure Go toolchain and clean caches
+        run: |
+          set -Eeuo pipefail
+          go version
+          go env
+          go clean -cache -testcache -modcache || true
+
+      - name: Run unit tests (coverage)
+        run: |
+          set -Eeuo pipefail
+          # Avoid using -coverpkg=./... which can cause the cover tool to instrument
+          # auxiliary tools packages and fail during parsing in some CI environments.
+          go test -race -covermode=atomic -coverprofile=unit.out ./...
+
+      - name: Check coverage file
+        run: |
+          set -Eeuo pipefail
+          if [[ ! -f unit.out ]]; then
+            echo "unit.out not found" >&2
+            exit 1
+          fi
+
+      - name: Report coverage to DeepSource
+        if: ${{ env.DEEPSOURCE_DSN != '' }}
+        uses: deepsourcelabs/test-coverage-action@4284bb73a04adb39faaa6bfcc2d0e3dd137ffed7 # v1.1.3
+        with:
+          key: go
+          coverage-file: unit.out
+          dsn: ${{ env.DEEPSOURCE_DSN }}
+          fail-ci-on-error: false

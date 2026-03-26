@@ -1,0 +1,48 @@
+name: Deprecation quick-check
+
+# Fast pre-merge check to catch known deprecated API usage (e.g. fakekube.NewSimpleClientset)
+# Runs quickly and fails PRs early if banned patterns are introduced.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches:
+      - '*'    # optional: run on pushes to any branch
+
+permissions:
+  contents: read
+
+jobs:
+  scan-deprecations:
+    name: Scan for deprecated API usage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+
+      - name: Quick grep for banned deprecated patterns
+        run: |
+          set -euo pipefail
+          echo "Searching for deprecated patterns..."
+          # Add patterns here (regex). If grep finds matches we fail the job.
+          patterns=(
+            'NewSimpleClientset\s*\('
+            'fakekube\.NewSimpleClientset\s*\('
+          )
+          found=0
+          for p in "${patterns[@]}"; do
+            echo "Checking pattern: $p"
+            if git grep -n --extended-regexp "$p" -- ':!vendor' ':!node_modules' >/dev/null; then
+              echo "Deprecated usage found for pattern: $p"
+              git grep -n --extended-regexp "$p" -- ':!vendor' ':!node_modules'
+              found=1
+            fi
+          done
+          if [[ "$found" -ne 0 ]]; then
+            echo "One or more deprecated patterns were found. Please replace deprecated APIs (e.g., use fakekube.NewClientset())."
+            exit 1
+          fi
+          echo "No deprecated patterns found."

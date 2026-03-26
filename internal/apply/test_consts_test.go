@@ -1,0 +1,27 @@
+package apply
+
+const (
+	TestNS                       = "test-ns"
+	ManagedLabelKeyFull          = "app.kubernetes.io/managed-by"
+	ManagedLabelValueController  = "test-controller"
+	ManagedAnnoKeyPangolin       = "pangolin.io/managed-by"
+	InstanceLabelKeyFull         = "app.kubernetes.io/instance"
+	InstanceLabelValueMyInstance = "my-instance"
+	ExistingES                   = "existing-es"
+	NewES                        = "new-es"
+	TestESName                   = "test-es"
+	ManagedBy                    = "managed-by"
+	AnnoKey                      = "anno-key"
+	AnnoVal                      = "anno-val"
+	InstanceKey                  = "instance"
+	Controller                   = "controller"
+	TraefikIngressClass          = "traefik"
+	TestRoute                    = "test-route"
+	TestKind                     = "test-kind"
+	TestMW                       = "test-mw"
+	TraefikAPIVersion            = "traefik.io/v1alpha1"
+	KindIngressRoute             = "IngressRoute"
+	KindTraefikService           = "TraefikService"
+	TestName                     = "test"
+	GetError                     = "get error"
+)

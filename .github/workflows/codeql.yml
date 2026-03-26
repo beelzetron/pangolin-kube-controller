@@ -1,0 +1,69 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '30 1 * * 2'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (CodeQL)
+    # Security: intentionally avoid running CodeQL on forked pull requests.
+    # Requiring the PR head repo to equal the base repo prevents workflows
+    # from executing untrusted code from forks with access to GITHUB_TOKEN or
+    # repository secrets.
+    if: >
+      github.event_name == 'schedule' ||
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name)
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@c793b717bc78562f491db7b0e93a3a178b099162 # v4.32.5
+        with:
+          languages: go
+
+      # Use an explicit Go build so CodeQL analyzes the exact build artifacts
+      # and respects any project-specific requirements (CGO, build tags, GOFLAGS,
+      # or multi-module layouts). The old `autobuild` step can miss those.
+      - name: Build (explicit)
+        # If your project requires CGO, system libraries, or custom build tags,
+        # install them here before running `go build` (apt-get, etc.).
+        run: |
+          set -euo pipefail
+          # Ensure modules are downloaded and a reproducible build is produced
+          export GOPROXY=${GOPROXY:-https://proxy.golang.org}
+          go env
+          go mod download
+          # You can add GOFLAGS or -tags here if your project needs them.
+          go build -v ./...
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@c793b717bc78562f491db7b0e93a3a178b099162 # v4.32.5
+        with:
+          category: '/language:go'

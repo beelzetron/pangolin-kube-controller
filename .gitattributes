@@ -1,0 +1,22 @@
+###############################################
+# Git attributes & line ending normalization  #
+###############################################
+# Enforce LF for all text files regardless of contributor OS.
+
+# Global rule: treat everything as text and normalize to LF.
+* text eol=lf
+*.go           text eol=lf
+*.yml          text eol=lf
+*.yaml         text eol=lf
+*.json         text eol=lf
+*.toml         text eol=lf
+*.md           text eol=lf
+*.sh           text eol=lf
+*.bash         text eol=lf
+*.txt          text eol=lf
+Makefile       text eol=lf
+Taskfile.yml   text eol=lf
+Dockerfile     text eol=lf
+*.dockerignore text eol=lf
+*.mod          text eol=lf
+*.sum          text eol=lf

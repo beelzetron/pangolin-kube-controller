@@ -1,0 +1,108 @@
+version: '3'
+
+output: interleaved
+
+
+vars:
+  PKGS: '{{.PKGS | default "./..."}}'
+  BIN_DIR: '{{.BIN_DIR | default "bin"}}'
+  BIN_CONTROLLER: '{{.BIN_CONTROLLER | default (printf "%s/%s" (.BIN_DIR | default "bin") "pangolin-kube-controller")}}'
+
+  TESTFLAGS: '{{.TESTFLAGS | default ""}}'
+
+  THRESH: '{{.THRESH | default "80.0"}}'
+
+
+tasks:
+  fmt:
+    desc: Format Go code (gofmt -s -w)
+    cmds:
+      - gofmt -s -w .
+
+  fmt:check:
+    desc: Verify Go formatting is clean (no file modifications)
+    cmds:
+      - cmd: |
+          set -eu
+          files=$(git ls-files '*.go' || true)
+          if [ -z "$files" ]; then
+            exit 0
+          fi
+          unformatted=$(gofmt -l -s $files)
+          if [ -n "$unformatted" ]; then
+            echo "::error::Run 'task go:fmt' on these files:" >&2
+            echo "$unformatted" >&2
+            exit 1
+          fi
+    silent: true
+
+  vet:
+    desc: Run `go vet`
+    cmds:
+      - go vet {{.PKGS}}
+
+  build:
+    desc: Build controller binary to {{.BIN_CONTROLLER}}
+    sources:
+      - go.mod
+      - go.sum
+      - cmd/controller/**/*.go
+      - internal/**/*.go
+    generates:
+      - '{{.BIN_CONTROLLER}}'
+    cmds:
+      - mkdir -p {{.BIN_DIR}}
+      - go build -o {{.BIN_CONTROLLER}} ./cmd/controller
+
+  test:
+    desc: Unit tests with per-package coverage (writes unit.out)
+    cmds:
+      - go test -race -covermode=atomic -coverprofile=unit.out {{.TESTFLAGS}} {{.PKGS}}
+
+  test:crosspkg:
+    desc: Unit tests with cross-package coverage instrumentation (writes unit-crosspkg.out)
+    cmds:
+      - go test -race -covermode=atomic -coverpkg=./... -coverprofile=unit-crosspkg.out {{.TESTFLAGS}} {{.PKGS}}
+
+  test:integration:
+    desc: Integration tests (envtest) with cross-package coverage (writes int.out)
+    cmds:
+      - cmd: |
+          set -eu
+          eval "$(setup-envtest use -p env 1.29.x)"
+          go test -tags=integration -race -covermode=atomic -coverpkg=./... -coverprofile=int.out {{.TESTFLAGS}} ./test/integration
+
+  cover:
+    desc: Coverage summary for unit.out
+    deps:
+      - test
+    cmds:
+      - go tool cover -func=unit.out
+
+  cover:crosspkg:
+    desc: Coverage summary for unit-crosspkg.out
+    deps:
+      - test:crosspkg
+    cmds:
+      - go tool cover -func=unit-crosspkg.out
+
+  coverage:
+    desc: Merge unit-crosspkg.out + int.out into coverage.out and print summary
+    deps:
+      - test:crosspkg
+      - test:integration
+    cmds:
+      - cp unit-crosspkg.out coverage.out
+      - tail -n +2 int.out >> coverage.out || true
+      - go tool cover -func=coverage.out
+
+  cover:threshold:
+    desc: Enforce coverage threshold on merged coverage.out (default {{.THRESH}})
+    deps:
+      - coverage
+    cmds:
+      - cmd: |
+          set -eu
+          total=$(go tool cover -func=coverage.out | awk '/^total:/ {print $3}' | sed 's/%//')
+          awk -v t="{{.THRESH}}" -v c="$total" 'BEGIN{ if (c+0 < t+0) { printf("Coverage %.2f%% < threshold %.2f%%\n", c, t); exit 1 } else { printf("Coverage OK: %.2f%% >= %.2f%%\n", c, t) } }'
+    silent: true

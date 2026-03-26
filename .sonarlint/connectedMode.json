@@ -1,0 +1,5 @@
+{
+    "sonarCloudOrganization": "fosrl",
+    "projectKey": "fosrl_pangolin-kube-controller",
+    "region": "EU"
+}

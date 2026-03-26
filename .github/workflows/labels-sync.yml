@@ -1,0 +1,94 @@
+name: Sync Repository Labels
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/labels.json
+      - .github/workflows/labels-sync.yml
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sync labels from .github/labels.json
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          python - <<'PY'
+          import base64
+          import json
+          import os
+          import urllib.error
+          import urllib.request
+          import urllib.parse
+
+          owner, repo = os.environ["GITHUB_REPOSITORY"].split("/")
+          token = os.environ["GITHUB_TOKEN"]
+          sha = os.environ["GITHUB_SHA"]
+          path = ".github/labels.json"
+
+          headers = {
+              "Authorization": f"Bearer {token}",
+              "Accept": "application/vnd.github+json",
+              "X-GitHub-Api-Version": "2022-11-28",
+              "User-Agent": "pangolin-label-sync",
+          }
+
+          def request(method, url, data=None):
+              body = None if data is None else json.dumps(data).encode("utf-8")
+              req = urllib.request.Request(url, data=body, headers=headers, method=method)
+              with urllib.request.urlopen(req) as resp:
+                  raw = resp.read().decode("utf-8")
+                  return json.loads(raw) if raw else None
+
+          contents_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{path}?ref={sha}"
+          file_obj = request("GET", contents_url)
+          labels = json.loads(base64.b64decode(file_obj["content"]).decode("utf-8"))
+
+          # Fetch existing labels using pagination to handle repos with >100 labels
+          existing = []
+          page = 1
+          while True:
+              page_items = request("GET", f"https://api.github.com/repos/{owner}/{repo}/labels?per_page=100&page={page}")
+              if not page_items:
+                  break
+              existing.extend(page_items)
+              # if less than page size, no more pages
+              if len(page_items) < 100:
+                  break
+              page += 1
+
+          existing_by_name = {item["name"]: item for item in existing}
+
+          for label in labels:
+              name = label["name"]
+              payload = {
+                  "new_name": name,
+                  "color": label["color"],
+                  "description": label["description"],
+              }
+              try:
+                  if name in existing_by_name:
+                      request("PATCH", f"https://api.github.com/repos/{owner}/{repo}/labels/{urllib.parse.quote(name, safe='')}", payload)
+                      print(f"updated: {name}")
+                  else:
+                      request("POST", f"https://api.github.com/repos/{owner}/{repo}/labels", {
+                          "name": name,
+                          "color": label["color"],
+                          "description": label["description"],
+                      })
+                      print(f"created: {name}")
+              except urllib.error.HTTPError as exc:
+                  print(f"failed: {name} -> HTTP {exc.code}")
+                  print(exc.read().decode("utf-8", errors="replace"))
+                  raise
+          PY

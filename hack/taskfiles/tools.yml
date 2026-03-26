@@ -1,0 +1,104 @@
+version: '3'
+
+# Tooling management (OSS-friendly)
+
+output: interleaved
+
+
+vars:
+  # Versions are pinned where `go install` is used.
+  GOLANGCI_LINT_VERSION: '{{.GOLANGCI_LINT_VERSION | default "v2.11.4"}}'
+  SHFMT_VERSION: '{{.SHFMT_VERSION | default "v3.11.0"}}'
+
+
+tasks:
+  check:
+    desc: Verify required tools exist (strict in CI)
+    cmds:
+      - cmd: |
+          set -eu
+
+          missing=0
+          require() {
+            name="$1"
+            hint="$2"
+            if ! command -v "$name" >/dev/null 2>&1; then
+              echo "::error ::Missing required tool: ${name}. ${hint}" >&2
+              missing=1
+            fi
+          }
+
+          optional() {
+            name="$1"
+            hint="$2"
+            if ! command -v "$name" >/dev/null 2>&1; then
+              echo "::warning ::Optional tool not found: ${name}. ${hint}" >&2
+            fi
+          }
+
+          require go "Install Go and ensure it's on PATH."
+          require git "Install Git and ensure it's on PATH."
+
+          # Go-based tools used by Task targets.
+          require golangci-lint "Run: task tools:install:golangci-lint"
+          optional shfmt "Run: task tools:install:shfmt"
+
+          # Optional linters (contributors may skip locally; CI may use actions instead)
+          optional yamllint "Install via pipx/pip if you want YAML lint locally."
+          optional markdownlint-cli2 "Install via npm if you want Markdown lint locally."
+          optional hadolint "Install hadolint if you want Dockerfile lint locally."
+
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+    silent: true
+
+  doctor:
+    desc: Validate local dev environment (Go, Git, optional Docker)
+    cmds:
+      - cmd: |
+          set -eu
+          echo "Go:   $(go version)"
+          echo "Git:  $(git --version)"
+          if command -v docker >/dev/null 2>&1; then
+            echo "Docker: $(docker --version)"
+          else
+            echo "Docker: <not found> (only needed for docker:* tasks)"
+          fi
+    silent: true
+
+  install:golangci-lint:
+    desc: Install golangci-lint (Go tool)
+    cmds:
+      - cmd: |
+          set -eu
+          echo "Installing golangci-lint {{.GOLANGCI_LINT_VERSION}}..."
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@{{.GOLANGCI_LINT_VERSION}}
+          echo "Installed: $(golangci-lint version)"
+
+  install:shfmt:
+    desc: Install shfmt (Go tool)
+    cmds:
+      - cmd: |
+          set -eu
+          echo "Installing shfmt {{.SHFMT_VERSION}}..."
+          go install mvdan.cc/sh/v3/cmd/shfmt@{{.SHFMT_VERSION}}
+          echo "Installed: $(shfmt --version || true)"
+
+  install:go:
+    desc: Install Go-based developer tools
+    cmds:
+      - task: install:golangci-lint
+      - task: install:shfmt
+
+  install:
+    desc: Install common developer tools (best-effort; some require external package managers)
+    cmds:
+      - task: install:go
+      - cmd: |
+          set -eu
+          echo "For non-Go tools, install manually as needed:"
+          echo "- markdownlint-cli2: npm i -g markdownlint-cli2"
+          echo "- yamllint: pipx install yamllint (or pip install yamllint)"
+          echo "- hadolint: https://github.com/hadolint/hadolint#install"
+    silent: true

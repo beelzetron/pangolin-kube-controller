@@ -1,0 +1,16 @@
+# markdownlint-cli2 config
+globs:
+  - "**/*.md"
+
+config:
+  default: true
+  # Disable MD013 (line length) to avoid churn in prose docs
+  MD013:
+    false
+  # Allow inline HTML snippets in docs
+  MD033: false
+  # First line top-level headings
+  MD041: true
+
+gitignore: ".gitignore"
+fix: false

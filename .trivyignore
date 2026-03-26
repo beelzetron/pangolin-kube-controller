@@ -1,0 +1,10 @@
+ignored-paths:
+  - ".git/"
+  - "vendor/"
+
+ignorefile-schema-version: 1
+
+vulnerabilities: []
+misconfigurations: []
+secrets: []
+licenses: []

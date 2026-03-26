@@ -1,0 +1,75 @@
+version: '3'
+
+output: interleaved
+
+
+vars:
+  PLATFORMS: '{{.PLATFORMS | default "linux/amd64,linux/arm64"}}'
+
+  VERSION: '{{.VERSION | default ""}}'
+  GIT_REVISION:
+    sh: git rev-parse --short=12 HEAD || echo unknown
+  BUILD_DATE:
+    sh: date -u +%FT%TZ
+
+  IMAGE_DH: '{{.IMAGE_DH | default "docker.io/fosrl/pangolin-kube-controller"}}'
+  IMAGE_GH: '{{.IMAGE_GH | default "ghcr.io/fosrl/pangolin-kube-controller"}}'
+  PUSH_LATEST: '{{.PUSH_LATEST | default "false"}}'
+
+
+tasks:
+  buildx:setup:
+    desc: Ensure Docker buildx builder exists
+    cmds:
+      - cmd: |
+          set -eu
+          if ! command -v docker >/dev/null 2>&1; then
+            echo "docker is required for this task" >&2
+            exit 1
+          fi
+          if ! docker buildx inspect pangolinx >/dev/null 2>&1; then
+            docker buildx create --name pangolinx --use
+          else
+            docker buildx use pangolinx
+          fi
+
+  buildx:
+    desc: Build & push multi-arch images via buildx
+    deps:
+      - buildx:setup
+    requires:
+      vars: [VERSION]
+    cmds:
+      - cmd: |
+          set -eu
+          # Safely build docker tag arguments as an array to avoid word-splitting
+          docker_tags=( "-t" "{{.IMAGE_DH}}:{{.VERSION}}" "-t" "{{.IMAGE_GH}}:{{.VERSION}}" )
+          if [ "{{.PUSH_LATEST}}" = "true" ]; then
+            docker_tags+=( "-t" "{{.IMAGE_DH}}:latest" "-t" "{{.IMAGE_GH}}:latest" )
+          fi
+
+          docker buildx build \
+            --platform {{.PLATFORMS}} \
+            "${docker_tags[@]}" \
+            --push \
+            --build-arg VERSION="{{.VERSION}}" \
+            --build-arg GIT_REVISION="{{.GIT_REVISION}}" \
+            --build-arg BUILD_DATE="{{.BUILD_DATE}}" \
+            .
+
+  image:local:
+    desc: Build single-arch image locally (no push)
+    requires:
+      vars: [VERSION]
+    cmds:
+      - cmd: |
+          set -eu
+          docker build \
+            --build-arg VERSION="{{.VERSION}}" \
+            --build-arg GIT_REVISION="{{.GIT_REVISION}}" \
+            --build-arg BUILD_DATE="{{.BUILD_DATE}}" \
+            -t "{{.IMAGE_DH}}:{{.VERSION}}" \
+            --label org.opencontainers.image.version="{{.VERSION}}" \
+            --label org.opencontainers.image.revision="{{.GIT_REVISION}}" \
+            --label org.opencontainers.image.created="{{.BUILD_DATE}}" \
+            .

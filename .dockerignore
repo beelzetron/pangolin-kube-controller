@@ -1,0 +1,79 @@
+# =========================
+# VCS
+# =========================
+.git
+.gitignore
+.gitattributes
+
+# =========================
+# Docker / Build metadata
+# =========================
+Dockerfile
+Dockerfile.scratch
+
+# =========================
+# Documentation / meta
+# =========================
+LICENSE
+VERSION
+*.md
+
+# =========================
+# Environment / secrets
+# =========================
+.env
+.env.local
+.env.example
+
+# =========================
+# CI / editor / tooling
+# =========================
+.github/
+.agent/
+.vscode/
+.idea/
+.sonarlint/
+.task/
+
+# Lint / scan / repo config
+.deepsource.toml
+.editorconfig
+.trivyignore
+.sonar-project.properties
+commitlint.config.mjs
+cliff.toml
+
+# =========================
+# Logs / temp / output
+# =========================
+*.log
+*.out
+*.tmp
+bin/
+dist/
+coverage.out
+unit.out
+int.out
+
+# =========================
+# Dependencies
+# =========================
+vendor/
+
+# =========================
+# YAML / config not needed in build
+# =========================
+*.yaml
+*.yml
+
+# =========================
+# Tests
+# =========================
+test/
+*_test.go
+
+# =========================
+# Non-runtime project folders
+# =========================
+docs/
+hack/

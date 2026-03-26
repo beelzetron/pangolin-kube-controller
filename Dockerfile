@@ -1,0 +1,77 @@
+# syntax=docker/dockerfile:1@sha256:b6afd42430b15f2d2a4c5a02b919e98a525b785b1aaff16747d2f623364e39b6
+##### Stage 1: Build (pinned, minimal, multi-arch) #####
+FROM --platform=$BUILDPLATFORM golang@sha256:8e02eb337d9e0ea459e041f1ee5eece41cbb61f1d83e7d883a3e2fb4862063fa AS build
+
+WORKDIR /src
+
+ENV GOFLAGS="-mod=readonly" \
+    GOMODCACHE=/go/pkg/mod \
+    GOCACHE=/root/.cache/go-build \
+    CGO_ENABLED=0
+
+RUN apk add --no-cache ca-certificates tzdata
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+ARG TARGETOS
+ARG TARGETARCH
+ARG TARGETVARIANT
+ARG VERSION=0.0.0
+ARG BUILD_DATE="2025-01-01T00:00:00Z"
+ARG GIT_REVISION="0000000000000000000000000000000000000000"
+
+# Build the main controller binary
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    set -eux; \
+    export GOOS="${TARGETOS:-linux}"; \
+    export GOARCH="${TARGETARCH}"; \
+    if [ -n "${TARGETVARIANT:-}" ]; then export GOARM="${TARGETVARIANT#v}"; fi; \
+    go build \
+      -trimpath \
+      -ldflags="-s -w \
+        -X 'pangolin-kube-controller/internal/version.Version=${VERSION}' \
+        -X 'pangolin-kube-controller/internal/version.Commit=${GIT_REVISION}' \
+        -X 'pangolin-kube-controller/internal/version.Date=${BUILD_DATE}'" \
+      -o /out/pangolin-kube-controller \
+      ./cmd/controller; \
+    go build \
+      -trimpath \
+      -o /out/healthcheck \
+      ./cmd/healthcheck
+
+##### Stage 2: Distroless runtime #####
+FROM gcr.io/distroless/static-debian12@sha256:2b7c93f6d6648c11f0e80a48558c8f77885eb0445213b8e69a6a0d7c89fc6ae4
+
+ARG VERSION=0.0.0
+ARG BUILD_DATE="2025-01-01T00:00:00Z"
+ARG GIT_REVISION="0000000000000000000000000000000000000000"
+
+LABEL org.opencontainers.image.title="Pangolin Kubernetes Controller" \
+      org.opencontainers.image.description="Synchronises Pangolin Traefik configuration into K8S Traefik CRDs" \
+      org.opencontainers.image.vendor="fosrl" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.source="https://github.com/fosrl/pangolin-kube-controller" \
+      org.opencontainers.image.licenses="AGPL-3.0-only" \
+      org.opencontainers.image.revision="${GIT_REVISION}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.documentation="https://github.com/fosrl/pangolin-kube-controller" \
+      org.opencontainers.image.authors="fosrl"
+
+WORKDIR /
+
+COPY --from=build /out/pangolin-kube-controller /controller
+COPY --from=build /out/healthcheck /healthcheck
+
+ENV HEALTHCHECK_PORT=9090 \
+    HEALTHCHECK_PATH=/health/ready
+
+USER nonroot:nonroot
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+    CMD ["/healthcheck"]
+
+ENTRYPOINT ["/controller"]

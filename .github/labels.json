@@ -1,0 +1,21 @@
+[
+  {"name": "area/controller", "color": "0e8a16", "description": "Changes related to the reconciliation loop and controller logic"},
+  {"name": "area/transform", "color": "0e8a16", "description": "Changes related to transformation, routing, sanitize, or protocol logic"},
+  {"name": "area/apply", "color": "0e8a16", "description": "Changes related to Server-Side-Apply and resource application"},
+  {"name": "area/kube", "color": "0e8a16", "description": "Changes related to Kubernetes client or resource handling"},
+  {"name": "area/observability", "color": "0e8a16", "description": "Changes related to metrics, logging, tracing, or health endpoints"},
+  {"name": "area/config", "color": "0e8a16", "description": "Changes related to configuration loading and normalization"},
+  {"name": "area/httpserver", "color": "0e8a16", "description": "Changes related to the HTTP server and probe endpoints"},
+  {"name": "area/leader-election", "color": "0e8a16", "description": "Changes related to leader election or HA coordination"},
+  {"name": "kind/docs", "color": "1d76db", "description": "Documentation-only or documentation-heavy change"},
+  {"name": "kind/ci", "color": "1d76db", "description": "CI/CD, workflow, or automation change"},
+  {"name": "kind/tests", "color": "1d76db", "description": "Test-only or test-heavy change"},
+  {"name": "kind/release", "color": "1d76db", "description": "Release, changelog, or packaging related change"},
+  {"name": "size/S", "color": "c2e0c6", "description": "Small PR"},
+  {"name": "size/M", "color": "bfdadc", "description": "Medium PR"},
+  {"name": "size/L", "color": "f9d0c4", "description": "Large PR"},
+  {"name": "size/XL", "color": "e99695", "description": "Very large PR"},
+  {"name": "needs-tests", "color": "fbca04", "description": "Tests may be missing or not documented in the PR"},
+  {"name": "needs-docs", "color": "fbca04", "description": "Documentation missing or incomplete"},
+  {"name": "needs-changelog", "color": "fbca04", "description": "CHANGELOG entry may be missing or not documented in the PR"}
+]

@@ -1,0 +1,69 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:best-practices",
+    ":semanticCommits",
+    ":semanticCommitTypeAll(chore)",
+    ":semanticCommitScope(deps)",
+    ":separateMajorReleases",
+    "helpers:pinGitHubActionDigests",
+    "docker:pinDigests",
+    "security:openssf-scorecard"
+  ],
+  "enabled": true,
+  "automerge": false,
+  "minimumReleaseAge": "3 days",
+  "timezone": "Europe/Berlin",
+  "dependencyDashboard": true,
+  "addLabels": ["dependencies"],
+  "reviewers": ["marcschaeferger"],
+  "prConcurrentLimit": 20,
+  "prHourlyLimit": 6,
+  "pinDigests": true,
+  "osvVulnerabilityAlerts": true,
+  "vulnerabilityAlerts": {
+    "schedule": [],
+    "dependencyDashboardApproval": false,
+    "minimumReleaseAge": null
+  },
+  "packageRules": [
+    {
+      "description": "Add OpenSSF Scorecard badge to PR tables",
+      "matchSourceUrls": ["https://github.com/**"],
+      "prBodyDefinitions": {
+        "OpenSSF": "[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/{{sourceRepo}}/badge)](https://securityscorecards.dev/viewer/?uri=github.com/{{sourceRepo}})"
+      },
+      "prBodyColumns": ["Package", "Type", "Update", "Change", "Pending", "OpenSSF"]
+    },
+    {
+      "description": "Group all Go module updates into a single PR; add golang label; tidy modules and update import paths",
+      "matchManagers": ["gomod"],
+      "groupName": "golang",
+      "addLabels": ["golang"],
+      "separateMinorPatch": false,
+      "separateMajorMinor": false,
+      "separateMultipleMajor": false,
+      "postUpdateOptions": ["gomodTidy", "gomodUpdateImportPaths"]
+    },
+    {
+      "description": "Group all Dockerfile image updates into a single PR; add docker label; pin digests",
+      "matchManagers": ["dockerfile"],
+      "groupName": "docker",
+      "addLabels": ["docker"],
+      "separateMinorPatch": false,
+      "separateMajorMinor": false,
+      "separateMultipleMajor": false,
+      "pinDigests": true
+    },
+    {
+      "description": "Group all GitHub Actions updates into a single PR; add github-actions label; pin by commit SHA",
+      "matchManagers": ["github-actions"],
+      "groupName": "github-actions",
+      "addLabels": ["github-actions"],
+      "separateMinorPatch": false,
+      "separateMajorMinor": false,
+      "separateMultipleMajor": false
+    }
+  ]
+}
+

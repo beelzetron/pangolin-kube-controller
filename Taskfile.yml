@@ -1,0 +1,157 @@
+version: '3'
+
+includes:
+  tools:
+    taskfile: ./hack/taskfiles/tools.yml
+
+  go:
+    taskfile: ./hack/taskfiles/go.yml
+
+  lint:
+    taskfile: ./hack/taskfiles/lint.yml
+
+  docs:
+    taskfile: ./hack/taskfiles/docs.yml
+
+  docker:
+    taskfile: ./hack/taskfiles/docker.yml
+
+  release:
+    taskfile: ./hack/taskfiles/release.yml
+
+
+#dotenv:
+#  - .env
+#  - .env.local
+
+
+vars:
+  GO_MIN: '{{.GO_MIN | default "1.26.1"}}'
+  GO_LATEST: '{{.GO_LATEST | default "1.26.1"}}'
+
+  PKGS: '{{.PKGS | default "./..."}}'
+
+  BIN_DIR: '{{.BIN_DIR | default "bin"}}'
+  BIN_CONTROLLER: '{{.BIN_CONTROLLER | default (printf "%s/%s" (.BIN_DIR | default "bin") "pangolin-kube-controller")}}'
+
+  # Common task inputs
+  TESTFLAGS: '{{.TESTFLAGS | default (env "TESTFLAGS") | default ""}}'
+  VERSION: '{{.VERSION | default (env "VERSION") | default ""}}'
+  THRESH: '{{.THRESH | default (env "THRESH") | default "75.0"}}'
+
+
+env:
+  # Contributor-friendly defaults; override via env or CLI.
+  TASK_FAILFAST: '{{.TASK_FAILFAST | default "true"}}'
+  TASK_CONCURRENCY: '{{.TASK_CONCURRENCY | default "4"}}'
+
+
+tasks:
+  default:
+    desc: Run the CI pipeline (local)
+    cmds:
+      - task: ci
+
+  doctor:
+    desc: Validate local dev environment
+    cmds:
+      - task: tools:doctor
+      - task: tools:check
+
+  deps:
+    desc: Setup project dependencies (Go modules + developer tools)
+    cmds:
+      - cmd: |
+          set -eu
+          echo "Downloading Go modules..."
+          go mod download
+      - task: tools:install
+
+  ci:
+    desc: Deterministic validation pipeline (tools + fmt + vet + lint + tests + docs)
+    cmds:
+      - task: tools:check
+      - task: go:fmt:check
+      - task: go:vet
+      - task: lint:all
+      - task: go:test
+      - task: docs:files:check
+      - task: docs:check
+
+  fix:
+    desc: Apply automatic fixes (gofmt + regenerate generated docs)
+    cmds:
+      - task: go:fmt
+      - task: docs:files
+
+  # --- Makefile-parity convenience aliases (preferred for contributors) ---
+  build:
+    desc: Build the controller binary
+    cmds:
+      - task: go:build
+
+  fmt:
+    desc: Format Go code
+    cmds:
+      - task: go:fmt
+
+  fmt:check:
+    desc: Verify Go formatting is clean
+    cmds:
+      - task: go:fmt:check
+
+  vet:
+    desc: Run `go vet`
+    cmds:
+      - task: go:vet
+
+  test:
+    desc: Run unit tests with per-package coverage
+    cmds:
+      - task: go:test
+
+  test:crosspkg:
+    desc: Run unit tests with cross-package coverage instrumentation
+    cmds:
+      - task: go:test:crosspkg
+
+  test:integration:
+    desc: Run integration tests (envtest)
+    cmds:
+      - task: go:test:integration
+
+  cover:
+    desc: Show unit coverage summary
+    cmds:
+      - task: go:cover
+
+  cover:crosspkg:
+    desc: Show cross-package coverage summary
+    cmds:
+      - task: go:cover:crosspkg
+
+  coverage:
+    desc: Merge unit + integration coverage and show summary
+    cmds:
+      - task: go:coverage
+
+  cover:threshold:
+    desc: Enforce coverage threshold
+    cmds:
+      - task: go:cover:threshold
+
+  lint:
+    desc: Run all linters
+    cmds:
+      - task: lint:all
+
+  changelog:
+    desc: Generate CHANGELOG.md
+    cmds:
+      - task: release:changelog
+
+  help:
+    desc: Show available tasks
+    silent: true
+    cmds:
+      - cmd: task --list

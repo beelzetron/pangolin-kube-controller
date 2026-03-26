@@ -1,0 +1,382 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint & Static Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      checks: write
+
+    # Avoid wasting runners on outdated pushes
+    concurrency:
+      group: lint-${{ github.ref }}
+      cancel-in-progress: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Generate Go files overview
+        run: go run ./hack/tools/genfilemap -out docs/GO_FILES_OVERVIEW.md
+
+      - name: Check docs up-to-date
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if ! git diff --exit-code -- docs/GO_FILES_OVERVIEW.md; then
+            echo "::error ::docs/GO_FILES_OVERVIEW.md is out of date. Run 'go run ./hack/tools/genfilemap -out docs/GO_FILES_OVERVIEW.md' and commit the result." >&2
+            exit 1
+          fi
+
+      - name: Doccheck (non-blocking)
+        continue-on-error: true
+        run: go run ./hack/tools/doccheck -outdir dist/doccheck
+
+      - name: Upload doccheck summary
+        if: ${{ always() }}
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: doccheck
+          path: dist/doccheck
+
+      # optional: pre-commit, wenn .pre-commit-config.yaml existiert
+      - name: Run pre-commit
+        continue-on-error: true
+        if: ${{ hashFiles('.pre-commit-config.yaml') != '' }}
+        uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd # v3.0.1
+
+      - name: gofmt
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mapfile -t FILES < <(git ls-files '*.go')
+          if [[ "${#FILES[@]}" -eq 0 ]]; then
+            exit 0
+          fi
+          UNFORMATTED="$(gofmt -l -s "${FILES[@]}")"
+          if [[ -n "$UNFORMATTED" ]]; then
+            echo "::error ::Run gofmt on the following files:"
+            echo "$UNFORMATTED"
+            exit 1
+          fi
+
+      - name: Ensure Go toolchain and clean caches
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          go version
+          go env
+          # Remove build/test/mod caches to avoid stale export data built by another toolchain
+          go clean -cache -testcache -modcache || true
+
+      - name: golangci-lint
+        continue-on-error: true
+        uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9.2.0
+        with:
+          version: v2.11.1
+          only-new-issues: true
+          args: --timeout=5m
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: Install staticcheck
+        run: go install honnef.co/go/tools/cmd/staticcheck@b8ec13ce4d00445d75da053c47498e6f9ec5d7d6 # Version 2025.1.1 (v0.6.1)
+
+      - name: staticcheck
+        run: |
+          "$(go env GOPATH)/bin/staticcheck" ./...
+
+      - name: Markdown lint
+        continue-on-error: true
+        uses: DavidAnson/markdownlint-cli2-action@07035fd053f7be764496c0f8d8f9f41f98305101 # v22.0.0
+        with:
+          globs: |
+            **/*.md
+            !**/vendor/**
+            !**/node_modules/**
+
+      - name: Setup Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.12'
+
+      #- name: Install yamllint
+      #  run: |
+      #    pip install yamllint==1.35.1 \
+      #      --hash sha256:2e16e504bb129ff515b37823b472750b36b6de07963bd74b307341ef5ad8bdc3
+
+      - name: Lint YAML files
+        continue-on-error: true
+        run: yamllint . -c .yamllint.yaml
+      #- name: YAML lint
+      #  uses: ibiqlik/action-yamllint@v3
+      #  with:
+      #    file_or_dir: .
+      #    config_file: .yamllint.yaml
+
+      - name: Hadolint (Dockerfile)
+        continue-on-error: true
+        if: ${{ hashFiles('Dockerfile') != '' }}
+        uses: hadolint/hadolint-action@2332a7b74a6de0dda2e2221d575162eba76ba5e5 # v3.3.0
+        with:
+          dockerfile: Dockerfile
+
+      - name: actionlint (check GH workflows)
+        continue-on-error: true
+        uses: reviewdog/action-actionlint@0d952c597ef8459f634d7145b0b044a9699e5e43 # v1.71.0
+
+  test:
+    name: Test & Coverage
+    runs-on: ubuntu-latest
+    needs: lint
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          # Use PR head commit to avoid merge-commit association for coverage (DeepSource recommendation)
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.ref }}
+
+      - name: Setup Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install setup-envtest # try instead of @release-0.22
+        run: go install sigs.k8s.io/controller-runtime/tools/setup-envtest@7a1b16d039d204e7e4c5c8df57124d4e060a55f0 # v0.22.4
+
+      - name: Unit tests (GOCOVERDIR)
+        run: |
+          # Classic coverage profile for unit tests; use -coverprofile for instrumentation.
+          go test -race -covermode=atomic -coverpkg=./... -coverprofile=unit.out ./...
+
+      - name: Integration tests (envtest)
+        if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
+        shell: bash
+        env:
+          # Increase client-go rate limit on CI to avoid throttling under rapid reconcile cycles
+          CLIENT_QPS: "100"
+          CLIENT_BURST: "200"
+          # Slightly slower polling in tests to reduce API pressure
+          POLL_INTERVAL: "500ms"
+          # Ensure sequential reconcile (no parallel errgroup cancellations in tests)
+          RECONCILE_PARALLEL: "false"
+          RECONCILE_MAX: "1"
+        run: |
+          set -euo pipefail
+          eval "$(setup-envtest use -p env 1.29.x)"
+          # Separate coverage profile for integration tests.
+          go test -tags=integration -race -covermode=atomic -coverpkg=./... -coverprofile=int.out ./test/integration
+
+      - name: Merge coverage and summary
+        run: |
+          # Merge unit + integration coverage profiles into coverage.out
+          cp unit.out coverage.out
+          # Append integration coverage if present (skip first line 'mode: ...')
+          if [[ -f int.out ]]; then
+            tail -n +2 int.out >> coverage.out
+          fi
+          go tool cover -func=coverage.out
+
+      - name: Verify coverage artifact exists
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if [[ ! -f coverage.out ]]; then
+            echo "::error ::coverage.out not found. Ensure go test produced -coverprofile output."
+            exit 1
+          fi
+          echo "coverage.out size: $(wc -c < coverage.out) bytes"
+          echo "coverage.out lines: $(wc -l < coverage.out)"
+
+      - name: SonarCloud scan
+        uses: SonarSource/sonarqube-scan-action@a31c9398be7ace6bbfaf30c0bd5d415f843d45e9  # v7.0.0
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: https://sonarcloud.io
+
+      - name: Check DeepSource DSN
+        id: check-deepsource
+        env:
+          DEEPSOURCE_DSN: ${{ secrets.DEEPSOURCE_DSN }}
+        run: |
+          if [[ -n "$DEEPSOURCE_DSN" ]]; then
+            echo "has_dsn=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_dsn=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Report coverage to DeepSource
+        if: ${{ steps.check-deepsource.outputs.has_dsn == 'true' }}
+        uses: deepsourcelabs/test-coverage-action@4284bb73a04adb39faaa6bfcc2d0e3dd137ffed7 # v1.1.3
+        with:
+          key: go
+          coverage-file: coverage.out
+          dsn: ${{ secrets.DEEPSOURCE_DSN }}
+          fail-ci-on-error: true
+
+      - name: Skip DeepSource coverage report (no DSN)
+        if: ${{ steps.check-deepsource.outputs.has_dsn == 'false' }}
+        run: |
+          echo "DEEPSOURCE_DSN not set; skipping DeepSource coverage report (typical for forked PRs)."
+
+      - name: Enforce coverage threshold
+        env:
+          THRESH: "75.0"
+        run: |
+          TOTAL=$(go tool cover -func=coverage.out | awk '/^total:/ {print $NF}' | sed 's/%//')
+          awk -v t="$THRESH" -v c="$TOTAL" 'BEGIN{ if (c+0 < t+0) { printf("Coverage %.2f%% < threshold %.2f%%\n", c, t); exit 1 } else { printf("Coverage OK: %.2f%% >= %.2f%%\n", c, t) } }'
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: coverage
+          path: coverage.out
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de # v5.5.2
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: fosrl/pangolin-kube-controller
+          files: coverage.out
+          disable_search: true
+          flags: unit
+          #fail_ci_if_error: true
+          verbose: true
+
+  security:
+    name: Security Scans
+    runs-on: ubuntu-latest
+    needs: test
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+  # CodeQL moved to .github/workflows/codeql.yml
+
+      - name: Build all Go packages (monorepo-safe)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if [[ -f go.mod ]]; then
+            go mod download
+            go build ./...
+          fi
+          while IFS= read -r -d '' modfile; do
+            d="$(dirname "$modfile")"
+            [[ "$d" == "." ]] && continue
+            ( cd "$d" && go mod download && go build ./... )
+            done < <(git ls-files -z '**/go.mod')
+
+      - name: Install gosec
+        run: go install github.com/securego/gosec/v2/cmd/gosec@6be2b51fd78feca86af91f5186b7964d76cb1256 # v2.22.10
+
+      - name: gosec (SAST)
+        continue-on-error: true
+        run: |
+          "$(go env GOPATH)/bin/gosec" -exclude-dir=internal/testschema ./...
+
+      # ---------- Trivy: Filesystem (Repo) ----------
+      - name: Trivy filesystem scan
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        with:
+          scan-type: fs
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+          format: sarif
+          output: trivy-fs.sarif
+
+      - name: Upload Trivy FS results
+        uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4
+        with:
+          sarif_file: trivy-fs.sarif
+          category: '/tool:trivy-fs'
+
+      # ---------- Trivy: IaC/Config (YAML/K8s/Terraform etc.) ----------
+      - name: Trivy config scan
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        with:
+          scan-type: config
+          format: sarif
+          output: trivy-config.sarif
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+
+      - name: Upload Trivy config results
+        uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4
+        with:
+          sarif_file: trivy-config.sarif
+          category: '/tool:trivy-config'
+
+      # ---------- Image bauen für Image-Scan ----------
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - name: Build controller image (local)
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7.0.0
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: pangolin-kube-controller:ci
+
+      # ---------- Trivy: Image ----------
+      - name: Trivy image scan
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        with:
+          image-ref: pangolin-kube-controller:ci
+          format: sarif
+          output: trivy-image.sarif
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+
+      - name: Upload Trivy image results
+        uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4
+        with:
+          sarif_file: trivy-image.sarif
+          category: '/tool:trivy-image'

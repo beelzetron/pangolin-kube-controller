@@ -1,0 +1,261 @@
+name: PR Metadata
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - edited
+      - ready_for_review
+
+permissions:
+  pull-requests: read
+  issues: write
+
+concurrency:
+  group: pr-metadata-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  metadata:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Apply labels and policy checks without checking out PR code
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import re
+          import fnmatch
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+          AREA_LABELS = {
+              "area/controller": ["internal/controller/**", "internal/orchestration/**"],
+              "area/transform": ["internal/transform/**"],
+              "area/apply": ["internal/apply/**"],
+              "area/kube": ["internal/kube/**"],
+              "area/observability": ["internal/observability/**"],
+              "area/config": ["internal/config/**"],
+              "area/httpserver": ["internal/httpserver/**"],
+              "area/leader-election": ["internal/orchestration/**", "**/*leader*", "**/*lease*"],
+              "kind/docs": ["README.md", "docs/**", "CONTRIBUTING.md", "SECURITY.md"],
+              "kind/ci": [".github/**", "Taskfile.yml", "hack/**", ".golangci.yml", ".yamllint.yaml", ".markdownlint*", ".deepsource.toml", "Dockerfile"],
+              "kind/tests": ["test/**", "**/*_test.go", "internal/testutil/**", "internal/testschema/**"],
+              "kind/release": ["CHANGELOG.md", ".github/workflows/release.yml", ".github/workflows/build-publish.yml"],
+          }
+
+          GENERATED_PATTERNS = [
+              "**/zz_generated.*",
+              "**/*.pb.go",
+              "**/*.gen.go",
+              "**/*_generated.go",
+              "vendor/**",
+              "dist/**",
+              "coverage/**",
+              "bin/**",
+          ]
+
+          SIZE_LABELS = ["size/S", "size/M", "size/L", "size/XL"]
+          NEEDS_LABELS = ["needs-tests", "needs-docs", "needs-changelog"]
+          AREA_LABEL_NAMES = list(AREA_LABELS.keys())
+          MANAGED_LABELS = SIZE_LABELS + NEEDS_LABELS + AREA_LABEL_NAMES
+          MARKER = "<!-- pangolin-pr-metadata -->"
+
+          owner, repo = os.environ["GITHUB_REPOSITORY"].split("/")
+          token = os.environ["GITHUB_TOKEN"]
+          event = json.load(open(os.environ["GITHUB_EVENT_PATH"], "r", encoding="utf-8"))
+          pr = event["pull_request"]
+          pr_number = pr["number"]
+          pr_body = pr.get("body") or ""
+
+          headers = {
+              "Authorization": f"Bearer {token}",
+              "Accept": "application/vnd.github+json",
+              "X-GitHub-Api-Version": "2022-11-28",
+              "User-Agent": "pangolin-pr-metadata",
+          }
+
+          def parse_next_link(link_header: str):
+              if not link_header:
+                  return None
+              for part in link_header.split(","):
+                  section = part.strip()
+                  if 'rel="next"' in section:
+                      return section[section.find("<") + 1: section.find(">")]
+              return None
+
+          def gh(method: str, url: str, data=None, timeout: int = 30):
+              """Make a GitHub API request and return (payload, headers).
+
+              The request will fail fast after `timeout` seconds.
+              """
+              body = None if data is None else json.dumps(data).encode("utf-8")
+              req = urllib.request.Request(url, data=body, headers=headers, method=method)
+              with urllib.request.urlopen(req, timeout=timeout) as resp:
+                  raw = resp.read().decode("utf-8")
+                  return (json.loads(raw) if raw else None), resp.headers
+
+          def gh_json(method: str, url: str, data=None):
+              return gh(method, url, data)[0]
+
+          def paginate(url: str):
+              items = []
+              while url:
+                  payload, resp_headers = gh("GET", url)
+                  if isinstance(payload, list):
+                      items.extend(payload)
+                  else:
+                      raise RuntimeError(f"Expected list payload from {url}")
+                  url = parse_next_link(resp_headers.get("Link"))
+              return items
+
+          def matches(path: str, patterns):
+              return any(fnmatch.fnmatch(path, pattern) for pattern in patterns)
+
+          def checked(label: str) -> bool:
+              escaped = re.escape(label)
+              return re.search(rf"- \[[xX]\] {escaped}", pr_body) is not None
+
+          def unique(seq):
+              seen = set()
+              out = []
+              for item in seq:
+                  if item not in seen:
+                      seen.add(item)
+                      out.append(item)
+              return out
+
+          files = paginate(f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/files?per_page=100")
+          changed_paths = [f["filename"] for f in files]
+
+          labels_to_add = []
+          for label, patterns in AREA_LABELS.items():
+              if any(matches(path, patterns) for path in changed_paths):
+                  labels_to_add.append(label)
+
+          non_generated_changes = 0
+          for f in files:
+              path = f["filename"]
+              if matches(path, GENERATED_PATTERNS):
+                  continue
+              non_generated_changes += int(f.get("additions", 0)) + int(f.get("deletions", 0))
+
+          if non_generated_changes >= 500:
+              labels_to_add.append("size/XL")
+          elif non_generated_changes >= 100:
+              labels_to_add.append("size/L")
+          elif non_generated_changes >= 30:
+              labels_to_add.append("size/M")
+          else:
+              labels_to_add.append("size/S")
+
+          runtime_changed = any(
+              path.startswith("cmd/") or path.startswith("internal/")
+              for path in changed_paths
+          )
+          tests_changed = any(
+              path.startswith("test/")
+              or path.startswith("internal/testutil/")
+              or path.startswith("internal/testschema/")
+              or path.endswith("_test.go")
+              for path in changed_paths
+          )
+          docs_changed = any(
+              path in {"README.md", "CONTRIBUTING.md", "SECURITY.md"}
+              or path.startswith("docs/")
+              for path in changed_paths
+          )
+          changelog_changed = "CHANGELOG.md" in changed_paths
+
+          tests_documented = checked("Tests added or updated") or checked("No tests needed")
+          docs_documented = checked("Documentation updated") or checked("No documentation update needed")
+          changelog_documented = checked("CHANGELOG.md updated") or checked("No changelog entry needed")
+
+          findings = []
+          if runtime_changed and not tests_changed and not tests_documented:
+              labels_to_add.append("needs-tests")
+              findings.append(
+                  "`needs-tests`: runtime code changed but no test updates were detected and the PR template does not document why tests are not needed."
+              )
+
+          if runtime_changed and not docs_changed and not docs_documented:
+              labels_to_add.append("needs-docs")
+              findings.append(
+                  "`needs-docs`: runtime code changed but no documentation updates were detected and the PR template does not document why docs are not needed."
+              )
+
+          if runtime_changed and not changelog_changed and not changelog_documented:
+              labels_to_add.append("needs-changelog")
+              findings.append(
+                  "`needs-changelog`: runtime code changed but `CHANGELOG.md` was not updated and the PR template does not document why no changelog entry is needed."
+              )
+
+          labels_to_add = unique(labels_to_add)
+
+          issue_url = f"https://api.github.com/repos/{owner}/{repo}/issues/{pr_number}"
+          issue = gh_json("GET", issue_url)
+          current_labels = [label["name"] for label in issue.get("labels", [])]
+
+          labels_to_remove = [
+              label for label in MANAGED_LABELS
+              if label in current_labels and label not in labels_to_add
+          ]
+
+          if labels_to_remove:
+              for label in labels_to_remove:
+                  encoded = urllib.parse.quote(label, safe="")
+                  try:
+                      gh("DELETE", f"{issue_url}/labels/{encoded}")
+                      print(f"removed label: {label}")
+                  except urllib.error.HTTPError as exc:
+                      if exc.code != 404:
+                          raise
+
+          missing_to_add = [label for label in labels_to_add if label not in current_labels]
+          if missing_to_add:
+              try:
+                  gh_json("POST", f"{issue_url}/labels", {"labels": missing_to_add})
+                  print(f"added labels: {', '.join(missing_to_add)}")
+              except urllib.error.HTTPError as exc:
+                  print(exc.read().decode("utf-8", errors="replace"))
+                  raise
+
+          comments = paginate(f"https://api.github.com/repos/{owner}/{repo}/issues/{pr_number}/comments?per_page=100")
+          existing_comment = next((c for c in comments if MARKER in (c.get("body") or "")), None)
+
+          if findings:
+              body_lines = [
+                  MARKER,
+                  "## PR automation findings",
+                  "",
+              ]
+              body_lines.extend([f"- {item}" for item in findings])
+              body_lines.extend([
+                  "",
+                  "To clear these labels automatically, either update the files or update the corresponding checkboxes in the PR template.",
+              ])
+              comment_body = "\n".join(body_lines)
+              if existing_comment:
+                  gh_json("PATCH", existing_comment["url"], {"body": comment_body})
+                  print("updated policy comment")
+              else:
+                  gh_json("POST", f"https://api.github.com/repos/{owner}/{repo}/issues/{pr_number}/comments", {"body": comment_body})
+                  print("created policy comment")
+          elif existing_comment:
+              gh("DELETE", existing_comment["url"])
+              print("removed policy comment")
+
+          print(json.dumps({
+              "changed_paths": changed_paths,
+              "non_generated_changes": non_generated_changes,
+              "final_labels": labels_to_add,
+              "findings": findings,
+          }, indent=2))
+          PY

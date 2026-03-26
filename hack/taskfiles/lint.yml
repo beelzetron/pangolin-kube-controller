@@ -1,0 +1,73 @@
+version: '3'
+
+output: interleaved
+
+
+tasks:
+  go:
+    desc: Lint Go code (golangci-lint)
+    cmds:
+      - golangci-lint run --timeout=5m
+
+  markdown:
+    desc: Lint Markdown files (markdownlint-cli2)
+    ignore_error: true
+    cmds:
+      - cmd: |
+          set -eu
+          if command -v markdownlint-cli2 >/dev/null 2>&1; then
+            markdownlint-cli2 \
+              "**/*.md" \
+              "!**/vendor/**" \
+              "!**/node_modules/**" \
+              "!.github/agents/**" \
+              "!docs/GO_FILES_OVERVIEW.md"
+          else
+            echo 'markdownlint-cli2 not found; skipping markdown lint'
+          fi
+
+  yaml:
+    desc: Lint YAML files (yamllint)
+    cmds:
+      - cmd: |
+          set -eu
+          if command -v yamllint >/dev/null 2>&1; then
+            yamllint -c .yamllint.yaml .
+          else
+            echo 'yamllint not found; skipping YAML lint'
+          fi
+
+  docker:
+    desc: Lint Dockerfile (hadolint) (non-blocking locally)
+    cmds:
+      - cmd: |
+          set -eu
+          if command -v hadolint >/dev/null 2>&1; then
+            hadolint Dockerfile || true
+          else
+            echo 'hadolint not found; skipping Dockerfile lint'
+          fi
+
+  shell:
+    desc: Lint shell scripts (shfmt -d -s)
+    cmds:
+      - cmd: |
+          set -eu
+          if command -v shfmt >/dev/null 2>&1; then
+            # Detect presence of shell files (using newline-separated output for test),
+            # then format using a NUL-separated pipeline for safety with filenames.
+            if git ls-files -- '*.sh' | grep -q .; then
+              git ls-files -z -- '*.sh' | xargs -0 shfmt -d -s
+            fi
+          else
+            echo 'shfmt not found; skipping shell format check'
+          fi
+
+  all:
+    desc: Run all linters sequentially (deterministic)
+    cmds:
+      - task: go
+      - task: markdown
+      - task: yaml
+      - task: docker
+      - task: shell

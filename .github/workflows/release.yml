@@ -1,0 +1,163 @@
+name: Release (Container)
+
+on:
+  push:
+    tags:
+      - '*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'SemVer version to release (e.g., 1.4.0 or 1.4.0-rc.1)'
+        required: true
+        type: string
+      publish_latest:
+        description: "Also publish the 'latest' tag"
+        required: true
+        type: boolean
+        default: false
+      publish_minor:
+        description: "Also publish the 'major.minor' tag"
+        required: true
+        type: boolean
+        default: false
+      target_branch:
+        description: 'Branch to tag for manual releases'
+        required: false
+        default: main
+  workflow_call:
+    inputs:
+      tag:
+        description: 'SemVer tag to release (e.g., 1.4.0 or 1.4.0-rc.1)'
+        required: true
+        type: string
+      publish_latest:
+        description: "Also publish the 'latest' tag"
+        required: false
+        type: boolean
+        default: false
+      publish_minor:
+        description: "Also publish the 'major.minor' tag"
+        required: false
+        type: boolean
+        default: false
+      environment:
+        description: 'Target environment name (informational)'
+        required: false
+        type: string
+        default: release
+
+permissions:
+  contents: read  # default least-privilege; jobs elevate only what they need
+
+concurrency:
+  group: release-${{ github.event_name }}-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.vars.outputs.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Validate requested version
+        id: vars
+        shell: bash
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          set -euo pipefail
+          # shellcheck source=hack/scripts/semver-constants.sh
+          source hack/scripts/semver-constants.sh
+          if [[ -z "${INPUT_VERSION}" ]]; then
+            echo "Version input is required" >&2
+            exit 1
+          fi
+          if [[ ! ${INPUT_VERSION} =~ ${SEMVER_REGEX} ]]; then
+            echo "Invalid SemVer: ${INPUT_VERSION}" >&2
+            exit 1
+          fi
+          echo "version=${INPUT_VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Create and push tag
+        shell: bash
+        env:
+          VERSION: ${{ steps.vars.outputs.version }}
+          TARGET_BRANCH: ${{ github.event.inputs.target_branch }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch --prune origin
+          git checkout "$TARGET_BRANCH"
+          git pull --ff-only origin "$TARGET_BRANCH"
+          if git rev-parse -q --verify "refs/tags/${VERSION}" >/dev/null; then
+            echo "Tag ${VERSION} already exists" >&2
+            exit 1
+          fi
+          git tag -a "${VERSION}" -m "Release ${VERSION}"
+          git push origin "refs/tags/${VERSION}"
+
+  release_dispatch:
+    name: Build and publish container images
+    if: github.event_name == 'workflow_dispatch'
+    needs: prepare
+    uses: ./.github/workflows/build-publish.yml
+    permissions:
+      contents: write          # create release notes
+      packages: write          # push images
+      attestations: write      # provenance attestations
+      security-events: write   # upload Trivy SARIF
+      id-token: write          # OIDC for signing/attest
+    with:
+      tag: ${{ needs.prepare.outputs.version }}
+      publish_latest: ${{ github.event.inputs.publish_latest }}
+      publish_minor: ${{ github.event.inputs.publish_minor }}
+    secrets:
+      COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+      COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+      DOCKER_HUB_ACCESS_TOKEN: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+
+  release_push:
+    name: Build and publish container images
+    if: github.event_name == 'push'
+    uses: ./.github/workflows/build-publish.yml
+    permissions:
+      contents: write
+      packages: write
+      attestations: write
+      security-events: write
+      id-token: write
+    with:
+      tag: ${{ github.ref_name }}
+    secrets:
+      COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+      COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+      DOCKER_HUB_ACCESS_TOKEN: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+
+  release_call:
+    name: Build and publish container images
+    if: github.event_name == 'workflow_call'
+    uses: ./.github/workflows/build-publish.yml
+    permissions:
+      contents: write
+      packages: write
+      attestations: write
+      security-events: write
+      id-token: write
+    with:
+      tag: ${{ inputs.tag }}
+      publish_latest: ${{ inputs.publish_latest }}
+      publish_minor: ${{ inputs.publish_minor }}
+    secrets:
+      COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+      COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+      DOCKER_HUB_ACCESS_TOKEN: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}

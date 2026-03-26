@@ -1,0 +1,147 @@
+name: Continuous Security
+
+on:
+  schedule:
+    - cron: '30 2 * * 2'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scheduled-scans:
+    name: Weekly Deep Scans
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # ---- Govulncheck ----
+      - name: Govulncheck (scheduled)
+        uses: golang/govulncheck-action@b625fbe08f3bccbe446d94fbf87fcc875a4f50ee # v1.0.4
+        with:
+          repo-checkout: false
+          go-version-file: go.mod
+          go-package: ./...
+          output-format: sarif
+          output-file: govulncheck.sarif
+
+      - name: Upload Govulncheck SARIF
+        if: always() && hashFiles('govulncheck.sarif') != ''
+        uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4
+        with:
+          sarif_file: govulncheck.sarif
+          category: '/tool:govulncheck'
+
+      # ---- Semgrep via container (no pip) ----
+      - name: Semgrep (security audit)
+        continue-on-error: true
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src returntocorp/semgrep:1.102.0 \
+            semgrep scan --config p/security-audit \
+                         --sarif --sarif-output semgrep.sarif \
+                         --metrics=off
+        # Tip: once comfortable, pin by digest e.g. returntocorp/semgrep@sha256:...
+
+      - name: Upload Semgrep SARIF
+        if: always() && hashFiles('semgrep.sarif') != ''
+        uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4
+        with:
+          sarif_file: semgrep.sarif
+          category: '/tool:semgrep'
+
+      # ---- Trivy: FS ----
+      - name: Trivy filesystem scan (full)
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        with:
+          scan-type: fs
+          format: sarif
+          output: trivy-fs.sarif
+          severity: MEDIUM,HIGH,CRITICAL
+          ignore-unfixed: true
+
+      - name: Upload Trivy FS SARIF
+        if: always() && hashFiles('trivy-fs.sarif') != ''
+        uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4
+        with:
+          sarif_file: trivy-fs.sarif
+          category: '/tool:trivy-fs'
+
+      # ---- Trivy: Config ----
+      - name: Trivy config scan (Helm/K8s)
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        with:
+          scan-type: config
+          format: sarif
+          output: trivy-config.sarif
+          severity: MEDIUM,HIGH,CRITICAL
+          ignore-unfixed: true
+
+      - name: Upload Trivy config SARIF
+        if: always() && hashFiles('trivy-config.sarif') != ''
+        uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4
+        with:
+          sarif_file: trivy-config.sarif
+          category: '/tool:trivy-config'
+
+      # ---- Build image + Trivy image scan ----
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - name: Build controller image (scheduled)
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7.0.0
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: pangolin-kube-controller:security
+
+      - name: Trivy image scan (scheduled)
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        with:
+          image-ref: pangolin-kube-controller:security
+          format: sarif
+          output: trivy-image.sarif
+          severity: MEDIUM,HIGH,CRITICAL
+          ignore-unfixed: true
+
+      - name: Upload Trivy image SARIF
+        if: always() && hashFiles('trivy-image.sarif') != ''
+        uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4
+        with:
+          sarif_file: trivy-image.sarif
+          category: '/tool:trivy-image'
+
+      # ---- SBOM (Syft) ----
+      - name: Generate SBOM (Syft)
+        uses: anchore/sbom-action@17ae1740179002c89186b61233e0f892c3118b11 # v0.23.0
+        with:
+          image: pangolin-kube-controller:security
+          upload-artifact: false
+          output-file: weekly-sbom.spdx.json
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: weekly-sbom
+          path: weekly-sbom.spdx.json

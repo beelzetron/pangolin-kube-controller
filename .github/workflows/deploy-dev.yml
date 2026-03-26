@@ -1,0 +1,93 @@
+name: Deploy Dev (Talos)
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to deploy (e.g., v1.2.3)"
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-dev-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NAMESPACE: pangolin
+  RELEASE_NAME: pangolin-kube-controller
+  CHART_REF: oci://ghcr.io/marcschaeferger/helm-charts/pangolin
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        # Empfohlen: auf Commit-SHA pinnen (Beispiel-SHA ersetzen)
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        # uses: actions/checkout@<FULL_COMMIT_SHA>
+
+      - name: Set tag
+        id: tag
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if [[ -n "${{ github.event.inputs.tag || '' }}" ]]; then
+            echo "value=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Prepare kubeconfig
+        env:
+          KUBECONFIG_B64: ${{ secrets.KUBECONFIG_B64 }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$HOME/.kube"
+          echo "$KUBECONFIG_B64" | base64 -d > "$HOME/.kube/config"
+          chmod 600 "$HOME/.kube/config"
+
+      - name: Setup kubectl
+        # Empfohlen: auf Commit-SHA pinnen
+        uses: azure/setup-kubectl@776406bce94f63e41d621b960d78ee25c8b76ede # v4.0.1
+        with:
+          version: v1.30.2
+
+      - name: Setup Helm
+        # Empfohlen: auf Commit-SHA pinnen
+        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+        with:
+          version: v3.15.2
+
+      - name: Create namespace if missing
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if ! kubectl get ns "$NAMESPACE" >/dev/null 2>&1; then
+            kubectl create ns "$NAMESPACE"
+          fi
+
+      - name: Helm upgrade --install
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          helm upgrade --install "$RELEASE_NAME" "$CHART_REF" \
+            --namespace "$NAMESPACE" \
+            --set image.repository="ghcr.io/fosrl/pangolin-kube-controller" \
+            --set image.tag="${{ steps.tag.outputs.value }}"
+
+      - name: Wait for rollout
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          kubectl -n "$NAMESPACE" rollout status "deploy/$RELEASE_NAME" --timeout=300s
+
+      - name: Smoke check
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          kubectl -n "$NAMESPACE" get pods -o wide

@@ -1,0 +1,41 @@
+failure-threshold: warning
+format: tty
+no-color: false
+no-fail: false
+
+disable-ignore-pragma: false
+
+strict-labels: false
+label-schema:
+  author: text
+  contact: email
+  created: rfc3339
+  version: semver
+  documentation: url
+  git-revision: hash
+  license: spdx
+
+trustedRegistries:
+  - docker.io
+  - ghcr.io
+  - registry.k8s.io
+  - gcr.io
+  - "*.gcr.io"
+  - quay.io
+  - mcr.microsoft.com
+  - cgr.dev
+
+ignored:
+  - DL3057
+  - SC1091
+  - DL3018
+
+override:
+  error:
+    - DL3020
+    - DL3004
+    - DL4000
+    - DL4004
+  warning:
+    - DL3006
+    - DL3007

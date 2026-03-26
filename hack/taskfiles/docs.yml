@@ -1,0 +1,34 @@
+version: '3'
+
+output: interleaved
+
+
+tasks:
+  files:
+    desc: Generate docs/GO_FILES_OVERVIEW.md
+    sources:
+      - hack/tools/genfilemap/**/*.go
+      - internal/**/*.go
+      - cmd/**/*.go
+    generates:
+      - docs/GO_FILES_OVERVIEW.md
+    cmds:
+      - go run ./hack/tools/genfilemap -out docs/GO_FILES_OVERVIEW.md
+
+  files:check:
+    desc: Verify docs/GO_FILES_OVERVIEW.md is up-to-date
+    cmds:
+      - task: files
+      - cmd: |
+          set -eu
+          if ! git diff --exit-code -- docs/GO_FILES_OVERVIEW.md >/dev/null 2>&1; then
+            echo "::error::docs/GO_FILES_OVERVIEW.md is out of date. Run 'task docs:files' and commit the result." >&2
+            exit 1
+          fi
+    silent: true
+
+  check:
+    desc: Run doccheck and write summary to dist/doccheck
+    cmds:
+      - go run ./hack/tools/doccheck -outdir dist/doccheck
+      - echo "Doccheck summary written to dist/doccheck/summary.md"

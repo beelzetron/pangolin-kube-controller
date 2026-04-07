@@ -252,7 +252,7 @@ func renderMarkdown(rep report) string {
 			continue
 		}
 		wroteFinding = true
-		buf.WriteString(fmt.Sprintf("## %s (%s)\n", f.PackagePath, f.PackageName))
+		fmt.Fprintf(&buf, "## %s (%s)\n", f.PackagePath, f.PackageName)
 		if f.MissingPkgDoc {
 			buf.WriteString("- Missing package doc\n")
 		}

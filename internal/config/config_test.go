@@ -9,6 +9,8 @@ import (
 	tst "pangolin-kube-controller/internal/testutil"
 )
 
+const unexpectedErrFmt = "unexpected error: %v"
+
 func TestEnvStringAndDefaults(t *testing.T) {
 	if got := envString("__UNKNOWN__", "def"); got != "def" {
 		t.Fatalf("envString default = %q", got)
@@ -415,4 +417,197 @@ func writeTempConfig(t *testing.T, content string) string {
 		t.Fatalf("write temp cfg: %v", err)
 	}
 	return p
+}
+
+func TestValidateOnLoseBehavior(t *testing.T) {
+	tests := []struct {
+		name    string
+		value   string
+		wantErr bool
+	}{
+		{"empty is valid", "", false},
+		{"exit is valid", "exit", false},
+		{"pause is valid", "pause", false},
+		{"EXIT uppercase valid", "EXIT", false},
+		{"PAUSE mixed case valid", "Pause", false},
+		{"invalid value", "bogus", true},
+		{"unknown value", "stop", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{OnLoseBehavior: tt.value}
+			err := cfg.validateOnLoseBehavior()
+			if tt.wantErr && err == nil {
+				t.Fatalf("expected error for ON_LOSE=%q", tt.value)
+			}
+			if !tt.wantErr && err != nil {
+				t.Fatalf("unexpected error for ON_LOSE=%q: %v", tt.value, err)
+			}
+		})
+	}
+}
+
+func TestValidateLeaseTiming(t *testing.T) {
+	t.Run("valid timing", func(t *testing.T) {
+		cfg := &Config{
+			LeaderEnabled: true,
+			LeaseDuration: 30 * time.Second,
+			RenewDeadline: 20 * time.Second,
+			RetryPeriod:   5 * time.Second,
+		}
+		if err := cfg.validateLeaseTiming(); err != nil {
+			t.Fatalf(unexpectedErrFmt, err)
+		}
+	})
+
+	t.Run("LeaseDuration not greater than RenewDeadline", func(t *testing.T) {
+		cfg := &Config{
+			LeaderEnabled: true,
+			LeaseDuration: 20 * time.Second,
+			RenewDeadline: 20 * time.Second,
+			RetryPeriod:   5 * time.Second,
+		}
+		if err := cfg.validateLeaseTiming(); err == nil {
+			t.Fatal("expected error when LeaseDuration <= RenewDeadline")
+		}
+	})
+
+	t.Run("RenewDeadline not greater than RetryPeriod", func(t *testing.T) {
+		cfg := &Config{
+			LeaderEnabled: true,
+			LeaseDuration: 30 * time.Second,
+			RenewDeadline: 5 * time.Second,
+			RetryPeriod:   5 * time.Second,
+		}
+		if err := cfg.validateLeaseTiming(); err == nil {
+			t.Fatal("expected error when RenewDeadline <= RetryPeriod")
+		}
+	})
+
+	t.Run("leader disabled skips validation", func(t *testing.T) {
+		cfg := &Config{
+			LeaderEnabled: false,
+			LeaseDuration: 0,
+			RenewDeadline: 0,
+			RetryPeriod:   0,
+		}
+		if err := cfg.validateLeaseTiming(); err != nil {
+			t.Fatalf("unexpected error when leader disabled: %v", err)
+		}
+	})
+}
+
+func TestValidateReconcileSettings(t *testing.T) {
+	t.Run("parallel with low max", func(t *testing.T) {
+		cfg := &Config{
+			ReconcileParallel: true,
+			ReconcileMax:      1,
+		}
+		if err := cfg.validateReconcileSettings(); err == nil {
+			t.Fatal("expected error when ReconcileParallel with ReconcileMax < 2")
+		}
+	})
+
+	t.Run("parallel with adequate max", func(t *testing.T) {
+		cfg := &Config{
+			ReconcileParallel: true,
+			ReconcileMax:      4,
+		}
+		if err := cfg.validateReconcileSettings(); err != nil {
+			t.Fatalf(unexpectedErrFmt, err)
+		}
+	})
+
+	t.Run("sequential no max required", func(t *testing.T) {
+		cfg := &Config{
+			ReconcileParallel: false,
+			ReconcileMax:      1,
+		}
+		if err := cfg.validateReconcileSettings(); err != nil {
+			t.Fatalf(unexpectedErrFmt, err)
+		}
+	})
+}
+
+func TestValidateGCSettings(t *testing.T) {
+	t.Run("valid queue size", func(t *testing.T) {
+		cfg := &Config{GCGraceQueueSize: 256}
+		if err := cfg.validateGCSettings(); err != nil {
+			t.Fatalf(unexpectedErrFmt, err)
+		}
+	})
+
+	t.Run("zero queue size", func(t *testing.T) {
+		cfg := &Config{GCGraceQueueSize: 0}
+		if err := cfg.validateGCSettings(); err == nil {
+			t.Fatal("expected error for zero queue size")
+		}
+	})
+
+	t.Run("negative queue size", func(t *testing.T) {
+		cfg := &Config{GCGraceQueueSize: -1}
+		if err := cfg.validateGCSettings(); err == nil {
+			t.Fatal("expected error for negative queue size")
+		}
+	})
+}
+
+func TestValidateBackoffSettings(t *testing.T) {
+	t.Run("valid max backoff passes", func(t *testing.T) {
+		cfg := &Config{MaxBackoff: 10 * time.Second}
+		if err := cfg.validateBackoffSettings(); err != nil {
+			t.Fatalf(unexpectedErrFmt, err)
+		}
+	})
+
+	t.Run("zero max backoff fails", func(t *testing.T) {
+		cfg := &Config{MaxBackoff: 0}
+		if err := cfg.validateBackoffSettings(); err == nil {
+			t.Fatal("expected error for MAX_BACKOFF=0")
+		}
+	})
+
+	t.Run("negative max backoff fails", func(t *testing.T) {
+		cfg := &Config{MaxBackoff: -1 * time.Second}
+		if err := cfg.validateBackoffSettings(); err == nil {
+			t.Fatal("expected error for negative MAX_BACKOFF")
+		}
+	})
+}
+
+func TestValidateAll(t *testing.T) {
+	t.Run("valid config passes all", func(t *testing.T) {
+		cfg := &Config{
+			OnLoseBehavior:    "pause",
+			MaxBackoff:        2 * time.Minute,
+			LeaderEnabled:     true,
+			LeaseDuration:     30 * time.Second,
+			RenewDeadline:     20 * time.Second,
+			RetryPeriod:       5 * time.Second,
+			ReconcileParallel: true,
+			ReconcileMax:      4,
+			GCGraceQueueSize:  256,
+		}
+		if err := cfg.Validate(); err != nil {
+			t.Fatalf(unexpectedErrFmt, err)
+		}
+	})
+
+	t.Run("invalid config fails", func(t *testing.T) {
+		cfg := &Config{
+			OnLoseBehavior:    "invalid",
+			MaxBackoff:        2 * time.Minute,
+			LeaderEnabled:     true,
+			LeaseDuration:     30 * time.Second,
+			RenewDeadline:     20 * time.Second,
+			RetryPeriod:       5 * time.Second,
+			ReconcileParallel: true,
+			ReconcileMax:      4,
+			GCGraceQueueSize:  256,
+		}
+		if err := cfg.Validate(); err == nil {
+			t.Fatal("expected error from Validate() when an underlying validator fails")
+		}
+	})
 }

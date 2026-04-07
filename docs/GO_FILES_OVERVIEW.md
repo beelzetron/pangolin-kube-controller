@@ -50,6 +50,7 @@ Purpose: quick, non-developer friendly guide to what each Go file does and why i
 - internal/config/env_test.go — Tests env.
 - internal/config/file.go — Go source file.
 - internal/config/normalize.go — Go source file.
+- internal/config/validate.go — Go source file.
 
 ## internal/controller
 - internal/controller/apply.go — Go source file.
@@ -87,6 +88,7 @@ Purpose: quick, non-developer friendly guide to what each Go file does and why i
 ## internal/kube
 - internal/kube/client.go — Go source file.
 - internal/kube/client_test.go — Tests client.
+- internal/kube/crd.go — Go source file.
 - internal/kube/doc.go — Package kube constructs Kubernetes clients used by the controller
 - internal/kube/labels/doc.go — Package labels resolves and verifies the Traefik instance label
 - internal/kube/labels/resolver.go — Go source file.

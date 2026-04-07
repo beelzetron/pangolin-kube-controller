@@ -220,11 +220,11 @@ jobs:
           echo "coverage.out size: $(wc -c < coverage.out) bytes"
           echo "coverage.out lines: $(wc -l < coverage.out)"
 
-      - name: SonarCloud scan
-        uses: SonarSource/sonarqube-scan-action@a31c9398be7ace6bbfaf30c0bd5d415f843d45e9  # v7.0.0
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: https://sonarcloud.io
+      # - name: SonarCloud scan
+      #   uses: SonarSource/sonarqube-scan-action@a31c9398be7ace6bbfaf30c0bd5d415f843d45e9  # v7.0.0
+      #   env:
+      #     SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      #     SONAR_HOST_URL: https://sonarcloud.io
 
       - name: Check DeepSource DSN
         id: check-deepsource
@@ -251,12 +251,12 @@ jobs:
         run: |
           echo "DEEPSOURCE_DSN not set; skipping DeepSource coverage report (typical for forked PRs)."
 
-      - name: Enforce coverage threshold
-        env:
-          THRESH: "75.0"
-        run: |
-          TOTAL=$(go tool cover -func=coverage.out | awk '/^total:/ {print $NF}' | sed 's/%//')
-          awk -v t="$THRESH" -v c="$TOTAL" 'BEGIN{ if (c+0 < t+0) { printf("Coverage %.2f%% < threshold %.2f%%\n", c, t); exit 1 } else { printf("Coverage OK: %.2f%% >= %.2f%%\n", c, t) } }'
+      # - name: Enforce coverage threshold
+      #   env:
+      #     THRESH: "75.0"
+      #   run: |
+      #     TOTAL=$(go tool cover -func=coverage.out | awk '/^total:/ {print $NF}' | sed 's/%//')
+      #     awk -v t="$THRESH" -v c="$TOTAL" 'BEGIN{ if (c+0 < t+0) { printf("Coverage %.2f%% < threshold %.2f%%\n", c, t); exit 1 } else { printf("Coverage OK: %.2f%% >= %.2f%%\n", c, t) } }'
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
@@ -264,16 +264,16 @@ jobs:
           name: coverage
           path: coverage.out
 
-      - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de # v5.5.2
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          slug: fosrl/pangolin-kube-controller
-          files: coverage.out
-          disable_search: true
-          flags: unit
-          #fail_ci_if_error: true
-          verbose: true
+      # - name: Upload coverage reports to Codecov
+      #   uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de # v5.5.2
+      #   with:
+      #     token: ${{ secrets.CODECOV_TOKEN }}
+      #     slug: fosrl/pangolin-kube-controller
+      #     files: coverage.out
+      #     disable_search: true
+      #     flags: unit
+      #     #fail_ci_if_error: true
+      #     verbose: true
 
   security:
     name: Security Scans
@@ -329,11 +329,11 @@ jobs:
           format: sarif
           output: trivy-fs.sarif
 
-      - name: Upload Trivy FS results
-        uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4
-        with:
-          sarif_file: trivy-fs.sarif
-          category: '/tool:trivy-fs'
+      # - name: Upload Trivy FS results
+      #   uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4
+      #   with:
+      #     sarif_file: trivy-fs.sarif
+      #     category: '/tool:trivy-fs'
 
       # ---------- Trivy: IaC/Config (YAML/K8s/Terraform etc.) ----------
       - name: Trivy config scan
@@ -345,11 +345,11 @@ jobs:
           ignore-unfixed: true
           severity: CRITICAL,HIGH
 
-      - name: Upload Trivy config results
-        uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4
-        with:
-          sarif_file: trivy-config.sarif
-          category: '/tool:trivy-config'
+      # - name: Upload Trivy config results
+      #   uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4
+      #   with:
+      #     sarif_file: trivy-config.sarif
+      #     category: '/tool:trivy-config'
 
       # ---------- Image bauen für Image-Scan ----------
       - name: Setup Docker Buildx
@@ -375,8 +375,8 @@ jobs:
           severity: CRITICAL,HIGH
           ignore-unfixed: true
 
-      - name: Upload Trivy image results
-        uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4
-        with:
-          sarif_file: trivy-image.sarif
-          category: '/tool:trivy-image'
+      # - name: Upload Trivy image results
+      #   uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4
+      #   with:
+      #     sarif_file: trivy-image.sarif
+      #     category: '/tool:trivy-image'

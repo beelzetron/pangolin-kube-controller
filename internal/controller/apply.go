@@ -29,6 +29,20 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
+const graceQueueFallbackMaxDelay = 1 * time.Second
+
+func stopAndDrainTimer(t *time.Timer) {
+	if t == nil {
+		return
+	}
+	if !t.Stop() {
+		select {
+		case <-t.C:
+		default:
+		}
+	}
+}
+
 func (c *Controller) applyConfig(ctx context.Context, cfg *traefikconfig.Config) error {
 	sanitizedCfg, err := sanitize.SanitizeTraefikConfig(cfg)
 	if err != nil {
@@ -261,10 +275,17 @@ func (c *Controller) staleManagedName(obj unstructured.Unstructured, desired map
 	if _, ok := desired[name]; ok {
 		return name, false
 	}
-	if obj.GetAnnotations()[c.cfg.ManagedAnnoKey] != c.cfg.ManagedAnnoValue {
+	if !isManagedByController(obj.GetAnnotations(), c.cfg.ManagedAnnoKey, c.cfg.ManagedAnnoValue) {
 		return name, false
 	}
 	return name, true
+}
+
+func isManagedByController(annotations map[string]string, annoKey, annoValue string) bool {
+	if annotations == nil {
+		return false
+	}
+	return annotations[annoKey] == annoValue
 }
 
 func (c *Controller) scheduleGraceDeletion(ctx context.Context, kind, name string) {
@@ -526,7 +547,7 @@ func (c *Controller) gcStaleCoreServices(ctx context.Context, desired map[string
 	for i := range list.Items {
 		svc := &list.Items[i]
 		name := svc.Name
-		if _, keep := desired[name]; keep || svc.Annotations[c.cfg.ManagedAnnoKey] != c.cfg.ManagedAnnoValue || c.cfg.ReadOnly {
+		if _, keep := desired[name]; keep || !isManagedByController(svc.Annotations, c.cfg.ManagedAnnoKey, c.cfg.ManagedAnnoValue) || c.cfg.ReadOnly {
 			continue
 		}
 		if err := cli.Delete(ctx, name, metav1.DeleteOptions{}); err != nil && !errors.IsNotFound(err) {
@@ -545,7 +566,7 @@ func (c *Controller) gcStaleEndpointSlices(ctx context.Context, desired map[stri
 	for i := range list.Items {
 		es := &list.Items[i]
 		name := es.Name
-		if _, keep := desired[name]; keep || es.Annotations[c.cfg.ManagedAnnoKey] != c.cfg.ManagedAnnoValue || c.cfg.ReadOnly {
+		if _, keep := desired[name]; keep || !isManagedByController(es.Annotations, c.cfg.ManagedAnnoKey, c.cfg.ManagedAnnoValue) || c.cfg.ReadOnly {
 			continue
 		}
 		if err := cli.Delete(ctx, name, metav1.DeleteOptions{}); err != nil && !errors.IsNotFound(err) {
@@ -560,13 +581,48 @@ func (c *Controller) enqueueGraceDeletion(ctx context.Context, req graceDeleteRe
 		c.startGraceDeletionPool(ctx, c.cfg.GCWorkers)
 	}
 	q := c.graceDelQueue
+	if c.collector != nil {
+		c.collector.GraceQueueDepth.Set(float64(len(q)))
+	}
+	gvr := c.gvrForKind(req.kind)
+	if gvr.Resource == "" {
+		logrus.Warnf("GC: unknown kind %q for grace deletion of %q; skipping", req.kind, req.name)
+		return
+	}
+	queueWait := time.NewTimer(500 * time.Millisecond)
 	select {
 	case q <- req:
+		stopAndDrainTimer(queueWait)
 		return
 	case <-ctx.Done():
+		stopAndDrainTimer(queueWait)
 		return
-	case <-time.After(250 * time.Millisecond):
-		logrus.Warnf("GC: grace queue full (len=%d); dropping deletion of %s %s", len(q), req.kind, req.name)
+	case <-queueWait.C:
+		if c.collector != nil {
+			c.collector.GraceQueueDropped.Inc()
+			c.collector.GraceQueueDepth.Set(float64(len(q)))
+		}
+		logrus.Warnf("GC: grace queue full (len=%d); performing synchronous deletion of %s %s", len(q), req.kind, req.name)
+		if req.delay > 0 {
+			delay := req.delay
+			if delay > graceQueueFallbackMaxDelay {
+				delay = graceQueueFallbackMaxDelay
+			}
+			t := time.NewTimer(delay)
+			select {
+			case <-ctx.Done():
+				stopAndDrainTimer(t)
+				return
+			case <-t.C:
+			}
+			if ctx.Err() != nil {
+				return
+			}
+		}
+		resIfc := resources.AdaptResource(c.dyn.Resource(gvr).Namespace(c.cfg.Namespace))
+		if err := resIfc.Delete(ctx, req.name, metav1.DeleteOptions{}); err != nil && !errors.IsNotFound(err) {
+			logrus.Errorf("GC: synchronous delete failed for %s %s: %v", req.kind, req.name, err)
+		}
 	}
 }
 
@@ -602,9 +658,12 @@ func (c *Controller) handleGraceDelete(ctx context.Context, req graceDeleteReq) 
 		t := time.NewTimer(req.delay)
 		select {
 		case <-ctx.Done():
-			t.Stop()
+			stopAndDrainTimer(t)
 			return
 		case <-t.C:
+		}
+		if ctx.Err() != nil {
+			return
 		}
 	}
 	c.gcSem <- struct{}{}

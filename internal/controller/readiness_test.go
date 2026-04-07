@@ -44,6 +44,31 @@ func TestReadyStateTransitions(t *testing.T) {
 	}
 }
 
+func TestReadyWhenPaused(t *testing.T) {
+	c := NewController(&config.Config{}, nil, nil, prometheus.NewCollector())
+	c.lastSuccessfulReconcile.Store(time.Now().UnixNano())
+	if !c.Ready() {
+		t.Fatalf("expected ready before pause")
+	}
+	c.paused.Store(true)
+	if c.Ready() {
+		t.Fatalf("expected not ready when paused")
+	}
+}
+
+func TestReadyTransitionPausedToActive(t *testing.T) {
+	c := NewController(&config.Config{}, nil, nil, prometheus.NewCollector())
+	c.paused.Store(true)
+	if c.Ready() {
+		t.Fatalf("expected not ready when paused")
+	}
+	c.paused.Store(false)
+	c.lastSuccessfulReconcile.Store(time.Now().UnixNano())
+	if !c.Ready() {
+		t.Fatalf("expected ready after becoming active with successful reconcile")
+	}
+}
+
 func TestStandalone(t *testing.T) {
 	done := make(chan struct{})
 	go func() {

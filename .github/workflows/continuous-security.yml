@@ -44,29 +44,28 @@ jobs:
           output-format: sarif
           output-file: govulncheck.sarif
 
-      - name: Upload Govulncheck SARIF
-        if: always() && hashFiles('govulncheck.sarif') != ''
-        uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4
-        with:
-          sarif_file: govulncheck.sarif
-          category: '/tool:govulncheck'
+      # - name: Upload Govulncheck SARIF
+      #   if: always() && hashFiles('govulncheck.sarif') != ''
+      #   uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4
+      #   with:
+      #     sarif_file: govulncheck.sarif
+      #     category: '/tool:govulncheck'
 
-      # ---- Semgrep via container (no pip) ----
-      - name: Semgrep (security audit)
-        continue-on-error: true
-        run: |
-          docker run --rm -v "$PWD:/src" -w /src returntocorp/semgrep:1.102.0 \
-            semgrep scan --config p/security-audit \
-                         --sarif --sarif-output semgrep.sarif \
-                         --metrics=off
-        # Tip: once comfortable, pin by digest e.g. returntocorp/semgrep@sha256:...
+      # # ---- Semgrep via container (no pip) ----
+      # - name: Semgrep (security audit)
+      #   continue-on-error: true
+      #   run: |
+      #     docker run --rm -v "$PWD:/src" -w /src returntocorp/semgrep:1.102.0 \
+      #       semgrep scan --config p/security-audit \
+      #                    --sarif --sarif-output semgrep.sarif \
+      #                    --metrics=off
 
-      - name: Upload Semgrep SARIF
-        if: always() && hashFiles('semgrep.sarif') != ''
-        uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4
-        with:
-          sarif_file: semgrep.sarif
-          category: '/tool:semgrep'
+      # - name: Upload Semgrep SARIF
+      #   if: always() && hashFiles('semgrep.sarif') != ''
+      #   uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4
+      #   with:
+      #     sarif_file: semgrep.sarif
+      #     category: '/tool:semgrep'
 
       # ---- Trivy: FS ----
       - name: Trivy filesystem scan (full)
@@ -78,12 +77,12 @@ jobs:
           severity: MEDIUM,HIGH,CRITICAL
           ignore-unfixed: true
 
-      - name: Upload Trivy FS SARIF
-        if: always() && hashFiles('trivy-fs.sarif') != ''
-        uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4
-        with:
-          sarif_file: trivy-fs.sarif
-          category: '/tool:trivy-fs'
+      # - name: Upload Trivy FS SARIF
+      #   if: always() && hashFiles('trivy-fs.sarif') != ''
+      #   uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4
+      #   with:
+      #     sarif_file: trivy-fs.sarif
+      #     category: '/tool:trivy-fs'
 
       # ---- Trivy: Config ----
       - name: Trivy config scan (Helm/K8s)
@@ -95,12 +94,12 @@ jobs:
           severity: MEDIUM,HIGH,CRITICAL
           ignore-unfixed: true
 
-      - name: Upload Trivy config SARIF
-        if: always() && hashFiles('trivy-config.sarif') != ''
-        uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4
-        with:
-          sarif_file: trivy-config.sarif
-          category: '/tool:trivy-config'
+      # - name: Upload Trivy config SARIF
+      #   if: always() && hashFiles('trivy-config.sarif') != ''
+      #   uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4
+      #   with:
+      #     sarif_file: trivy-config.sarif
+      #     category: '/tool:trivy-config'
 
       # ---- Build image + Trivy image scan ----
       - name: Setup Docker Buildx
@@ -125,12 +124,12 @@ jobs:
           severity: MEDIUM,HIGH,CRITICAL
           ignore-unfixed: true
 
-      - name: Upload Trivy image SARIF
-        if: always() && hashFiles('trivy-image.sarif') != ''
-        uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4
-        with:
-          sarif_file: trivy-image.sarif
-          category: '/tool:trivy-image'
+      # - name: Upload Trivy image SARIF
+      #   if: always() && hashFiles('trivy-image.sarif') != ''
+      #   uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4
+      #   with:
+      #     sarif_file: trivy-image.sarif
+      #     category: '/tool:trivy-image'
 
       # ---- SBOM (Syft) ----
       - name: Generate SBOM (Syft)

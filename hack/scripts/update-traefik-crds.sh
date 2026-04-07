@@ -62,7 +62,7 @@ for fname in "${!FILES[@]}"; do
 	printf "%-35s %10d bytes  sha256:%s\n" "$fname" "$(wc -c <"$OUT_DIR/$fname")" "$sum"
 done
 
-if [[ "$DOWNLOAD_SPLIT" == "true" ]]; then
+if [[ $DOWNLOAD_SPLIT == "true" ]]; then
 	for fname in "${INDIVIDUAL_FILES[@]}"; do
 		url="${base_url}/${fname}"
 		tmp="$(mktemp)"

@@ -38,7 +38,7 @@ func main() {
 		entries := groups[g]
 		sort.Slice(entries, func(i, j int) bool { return entries[i].Path < entries[j].Path })
 		for _, e := range entries {
-			buf.WriteString(fmt.Sprintf("- %s — %s\n", e.Path, e.Summary))
+			fmt.Fprintf(&buf, "- %s — %s\n", e.Path, e.Summary)
 		}
 		buf.WriteString("\n")
 	}
@@ -258,14 +258,6 @@ func hyphenToWords(s string) string {
 		return "behavior"
 	}
 	return s
-}
-
-func check(err error) bool {
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return true
-	}
-	return false
 }
 
 // fatalIf logs the error and exits the program when err is non-nil. Use for

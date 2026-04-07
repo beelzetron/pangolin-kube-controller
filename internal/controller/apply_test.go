@@ -17,6 +17,9 @@ import (
 	"pangolin-kube-controller/internal/config"
 )
 
+const managedByAnno = "managed-by"
+const managedByValue = "pangolin"
+
 // fakeResourceClient implements the minimal ResourceClient used by deleteImmediate
 type fakeResourceClient struct {
 	deleted map[string]bool
@@ -62,15 +65,15 @@ func TestBuildDesiredSet(t *testing.T) {
 
 func TestStaleManagedName(t *testing.T) {
 	cfg := &config.Config{
-		ManagedAnnoKey:   "managed-by",
-		ManagedAnnoValue: "pangolin",
+		ManagedAnnoKey:   managedByAnno,
+		ManagedAnnoValue: managedByValue,
 	}
 	c := &Controller{cfg: cfg}
 
 	// case: present in desired -> not stale
 	obj := unstructured.Unstructured{}
 	obj.SetName("keep")
-	obj.SetAnnotations(map[string]string{"managed-by": "pangolin"})
+	obj.SetAnnotations(map[string]string{managedByAnno: managedByValue})
 	desired := map[string]struct{}{"keep": {}}
 	name, stale := c.staleManagedName(obj, desired)
 	require.Equal(t, "keep", name)
@@ -79,7 +82,7 @@ func TestStaleManagedName(t *testing.T) {
 	// case: not in desired, annotation mismatch -> not stale
 	obj2 := unstructured.Unstructured{}
 	obj2.SetName("other")
-	obj2.SetAnnotations(map[string]string{"managed-by": "someone-else"})
+	obj2.SetAnnotations(map[string]string{managedByAnno: "someone-else"})
 	name2, stale2 := c.staleManagedName(obj2, map[string]struct{}{})
 	require.Equal(t, "other", name2)
 	require.False(t, stale2)
@@ -87,10 +90,87 @@ func TestStaleManagedName(t *testing.T) {
 	// case: not in desired, annotation matches -> stale
 	obj3 := unstructured.Unstructured{}
 	obj3.SetName("stale")
-	obj3.SetAnnotations(map[string]string{"managed-by": "pangolin"})
+	obj3.SetAnnotations(map[string]string{managedByAnno: managedByValue})
 	name3, stale3 := c.staleManagedName(obj3, map[string]struct{}{})
 	require.Equal(t, "stale", name3)
 	require.True(t, stale3)
+}
+
+func TestStaleManagedNameNilAnnotations(t *testing.T) {
+	cfg := &config.Config{
+		ManagedAnnoKey:   managedByAnno,
+		ManagedAnnoValue: "managedByValue",
+	}
+	c := &Controller{cfg: cfg}
+
+	// case: nil annotations -> not stale (should not panic, should not delete)
+	obj := unstructured.Unstructured{}
+	obj.SetName("no-anno")
+	obj.SetAnnotations(nil)
+	name, stale := c.staleManagedName(obj, map[string]struct{}{})
+	require.Equal(t, "no-anno", name)
+	require.False(t, stale)
+
+	// case: empty map -> not stale
+	obj2 := unstructured.Unstructured{}
+	obj2.SetName("empty-anno")
+	obj2.SetAnnotations(map[string]string{})
+	name2, stale2 := c.staleManagedName(obj2, map[string]struct{}{})
+	require.Equal(t, "empty-anno", name2)
+	require.False(t, stale2)
+}
+
+func TestIsManagedByController(t *testing.T) {
+	tests := []struct {
+		name      string
+		annos     map[string]string
+		annoKey   string
+		annoValue string
+		want      bool
+	}{
+		{
+			name:      "nil annotations",
+			annos:     nil,
+			annoKey:   managedByAnno,
+			annoValue: managedByValue,
+			want:      false,
+		},
+		{
+			name:      "empty annotations",
+			annos:     map[string]string{},
+			annoKey:   managedByAnno,
+			annoValue: managedByValue,
+			want:      false,
+		},
+		{
+			name:      "annotation matches",
+			annos:     map[string]string{managedByAnno: "pangolin"},
+			annoKey:   managedByAnno,
+			annoValue: "pangolin",
+			want:      true,
+		},
+		{
+			name:      "annotation does not match",
+			annos:     map[string]string{managedByAnno: "other"},
+			annoKey:   managedByAnno,
+			annoValue: "pangolin",
+			want:      false,
+		},
+		{
+			name:      "different key present",
+			annos:     map[string]string{"other-key": "pangolin"},
+			annoKey:   managedByAnno,
+			annoValue: "pangolin",
+			want:      false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isManagedByController(tt.annos, tt.annoKey, tt.annoValue)
+			require.Equal(t, tt.want, got)
+		})
+	}
 }
 
 func TestDeleteImmediate(t *testing.T) {

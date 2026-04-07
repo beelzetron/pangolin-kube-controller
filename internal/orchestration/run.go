@@ -7,6 +7,7 @@ package orchestration
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -32,6 +33,7 @@ var (
 	newClients           = kube.NewClients
 	resolveInstanceLabel = labels.ResolveInstanceLabel
 	monitorInstanceLabel = labels.Monitor
+	checkCRDs            = kube.CheckCRDs
 )
 
 // controllerFacade defines the minimal surface from the service.Controller
@@ -176,6 +178,14 @@ func runControllerWithStarter(ctx context.Context, cfg *config.Config, httpSrv *
 	clients, err := newClients(cfg)
 	if err != nil {
 		return err
+	}
+
+	if cfg.EnableCRDValidation {
+		logrus.Info("Checking for required Traefik CRDs...")
+		if err := checkCRDs(ctx, clients.Apiextensions); err != nil {
+			return fmt.Errorf("CRD validation failed: %w", err)
+		}
+		logrus.Info("All required Traefik CRDs present")
 	}
 
 	// Resolve Traefik instance label (ENV/Config or autodetect via IngressClass) before starting reconciliation

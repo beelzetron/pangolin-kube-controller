@@ -6,6 +6,10 @@ import (
 )
 
 func (c *Controller) Ready() bool {
+	if c.paused.Load() {
+		c.setReady(0)
+		return false
+	}
 	ts := c.lastSuccessfulReconcile.Load()
 	if ts == 0 {
 		c.setReady(0)

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"time"
 )
 
@@ -53,6 +54,8 @@ type Config struct {
 	ClientQPS   float64
 	ClientBurst int
 
+	EnableCRDValidation bool
+
 	ReconcileParallel bool
 	ReconcileMax      int
 
@@ -81,5 +84,8 @@ func LoadFromEnv() *Config {
 	populateInstanceLabelFromEnv(cfg)
 	mergeConfigFile(cfg)
 	cfg.normalize()
+	if err := cfg.Validate(); err != nil {
+		panic(fmt.Sprintf("invalid configuration: %v", err))
+	}
 	return cfg
 }

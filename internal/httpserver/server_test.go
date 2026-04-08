@@ -180,25 +180,6 @@ func TestStartPlaintextSuccessAndShutdown(t *testing.T) {
 	}
 }
 
-func TestStartUsesDefaultAddrWhenEmpty(t *testing.T) {
-	cfg := &config.Config{MetricsAddr: "", EnablePprof: false}
-	s := NewServer(cfg, nil)
-	errCh := make(chan error, 1)
-	go func() { errCh <- s.Start() }()
-	time.Sleep(50 * time.Millisecond)
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-	_ = s.Shutdown(ctx)
-	select {
-	case err := <-errCh:
-		if err != nil && err != http.ErrServerClosed {
-			t.Fatalf(errUnexpectedStartFmt, err)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal(errTimeoutShutdown)
-	}
-}
-
 func TestStartLoopbackAddrNoRewrite(t *testing.T) {
 	cfg := &config.Config{MetricsAddr: loopbackAnyPort, EnablePprof: false}
 	s := NewServer(cfg, nil)

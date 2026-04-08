@@ -215,6 +215,9 @@ func (c *Controller) applyIngressRoute(ctx context.Context, resIfc resources.Res
 }
 
 func (c *Controller) applyDesiredObjects(ctx context.Context, dyn dynamic.Interface, gvr schema.GroupVersionResource, objects map[string]json.RawMessage) error {
+	if c.cfg.ReadOnly {
+		return nil
+	}
 	ops := &apply.UnstructuredOps{
 		Dyn:       dyn,
 		GVR:       gvr,

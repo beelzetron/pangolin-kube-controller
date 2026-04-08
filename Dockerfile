@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1@sha256:b6afd42430b15f2d2a4c5a02b919e98a525b785b1aaff16747d2f623364e39b6
-##### Stage 1: Build (pinned, minimal, multi-arch) #####
-FROM --platform=$BUILDPLATFORM golang@sha256:8e02eb337d9e0ea459e041f1ee5eece41cbb61f1d83e7d883a3e2fb4862063fa AS build
+##### Stage 1: Build (pinned & minimal, multi-arch) #####
+FROM --platform=$BUILDPLATFORM golang@sha256:2389ebfa5b7f43eeafbd6be0c3700cc46690ef842ad962f6c5bd6be49ed82039 AS build
+#1.26.1-alpine
 
 WORKDIR /src
 
@@ -68,7 +69,6 @@ COPY --from=build /out/healthcheck /healthcheck
 
 ENV HEALTHCHECK_PORT=9090 \
     HEALTHCHECK_PATH=/health/ready
-
 USER nonroot:nonroot
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \

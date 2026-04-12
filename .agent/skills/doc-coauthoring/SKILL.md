@@ -10,6 +10,7 @@ This skill provides a structured workflow for guiding users through collaborativ
 ## When to Offer This Workflow
 
 **Trigger conditions:**
+
 - User mentions writing documentation: "write a doc", "draft a proposal", "create a spec", "write up"
 - User mentions specific doc types: "PRD", "design doc", "decision doc", "RFC"
 - User seems to be starting a substantial writing task
@@ -42,11 +43,13 @@ Start by asking the user for meta-context about the document:
 Inform them they can answer in shorthand or dump information however works best for them.
 
 **If user provides a template or mentions a doc type:**
+
 - Ask if they have a template document to share
 - If they provide a link to a shared document, use the appropriate integration to fetch it
 - If they provide a file, read it
 
 **If user mentions editing an existing shared document:**
+
 - Use the appropriate integration to read the current state
 - Check for images without alt-text
 - If images exist without alt-text, explain that when others use Claude to understand the doc, Claude won't be able to see them. Ask if they want alt-text generated. If so, request they paste each image into chat for descriptive alt-text generation.
@@ -54,6 +57,7 @@ Inform them they can answer in shorthand or dump information however works best 
 ### Info Dumping
 
 Once initial questions are answered, encourage the user to dump all the context they have. Request information such as:
+
 - Background on the project/problem
 - Related team discussions or shared documents
 - Why alternative solutions aren't being used
@@ -63,6 +67,7 @@ Once initial questions are answered, encourage the user to dump all the context 
 - Stakeholder concerns
 
 Advise them not to worry about organizing it - just get it all out. Offer multiple ways to provide context:
+
 - Info dump stream-of-consciousness
 - Point to team channels or threads to read
 - Link to shared documents
@@ -107,6 +112,7 @@ If user wants to add more, let them. When ready, proceed to Stage 2.
 
 **Instructions to user:**
 Explain that the document will be built section by section. For each section:
+
 1. Clarifying questions will be asked about what to include
 2. 5-20 options will be brainstormed
 3. User will indicate what to keep/remove/combine

@@ -93,7 +93,7 @@ task ci
 
 ## Expected output
 
-* Summary of change impact
-* Risks identified
-* Required fixes (if any)
-* Validation commands executed
+- Summary of change impact
+- Risks identified
+- Required fixes (if any)
+- Validation commands executed

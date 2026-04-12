@@ -256,10 +256,11 @@ jobs:
           push-to-registry: true
 
       - name: Upload SBOM artifact
+        if: ${{ steps.run-release.outputs.sbom != '' }}
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: sbom-${{ env.TAG }}
-          path: ${{ env.SBOM_PATH }}
+          path: ${{ steps.run-release.outputs.sbom }}
 
       # - name: Upload Trivy SARIF
       #   if: env.TRIVY_REPORT != ''

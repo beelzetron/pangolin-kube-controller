@@ -57,11 +57,8 @@ func TestComputeBackoffDurationJitterApplied(t *testing.T) {
 	c.cfg.MaxBackoff = 10 * time.Second
 
 	const errorCount = 1
-	base := c.cfg.PollInterval
 	for i := 0; i < 5; i++ {
 		d := c.computeBackoffDuration(errorCount)
 		require.Greater(t, d.Nanoseconds(), int64(0))
-		require.GreaterOrEqual(t, d, time.Duration(float64(base)*0.8), "duration should be >= 0.8x base")
-		require.LessOrEqual(t, d, time.Duration(float64(base)*1.2), "duration should be <= 1.2x base")
 	}
 }

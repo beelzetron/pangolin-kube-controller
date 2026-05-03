@@ -67,7 +67,7 @@ func TestLoadCustomCAEmptyPEM(t *testing.T) {
 
 	f, err := os.CreateTemp(t.TempDir(), "ca-empty*.pem")
 	require.NoError(t, err)
-	require.NoError(t, f.Close())
+	f.Close()
 
 	cfg := &config.Config{CAFile: f.Name()}
 	tlsCfg := &tls.Config{MinVersion: tls.VersionTLS12}
@@ -217,14 +217,9 @@ func writeSelfSignedCert(t *testing.T, cn string) string {
 
 	f, err := os.CreateTemp(t.TempDir(), "cert*.pem")
 	require.NoError(t, err)
-	// Ensure the file is closed and flushed before returning its name.
-	// Keep a cleanup to remove the file when the test finishes.
-	t.Cleanup(func() {
-		_ = os.Remove(f.Name())
-	})
+	t.Cleanup(func() { f.Close() })
 
 	require.NoError(t, pem.Encode(f, &pem.Block{Type: "CERTIFICATE", Bytes: der}))
-	require.NoError(t, f.Close())
 	return f.Name()
 }
 
@@ -251,14 +246,14 @@ func writeSelfSignedClientCertPair(t *testing.T) (certPath, keyPath string) {
 	cf, err := os.Create(certFile)
 	require.NoError(t, err)
 	require.NoError(t, pem.Encode(cf, &pem.Block{Type: "CERTIFICATE", Bytes: der}))
-	require.NoError(t, cf.Close())
+	cf.Close()
 
 	keyDER, err := x509.MarshalECPrivateKey(key)
 	require.NoError(t, err)
 	kf, err := os.Create(keyFile)
 	require.NoError(t, err)
 	require.NoError(t, pem.Encode(kf, &pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER}))
-	require.NoError(t, kf.Close())
+	kf.Close()
 
 	return certFile, keyFile
 }

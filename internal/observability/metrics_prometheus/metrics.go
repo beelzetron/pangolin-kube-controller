@@ -33,11 +33,6 @@ type Collector struct {
 	InstanceLabelDetectFailures prometheus.Counter
 	InstanceLabelLastCheck      prometheus.Gauge
 
-	GraceQueueDropped prometheus.Counter
-	GraceQueueDepth   prometheus.Gauge
-
-	LeaderState prometheus.Gauge
-
 	// OpenTelemetry instruments (exported via Prometheus exporter on the same registry)
 	OTel *otelmetrics.OTel
 }
@@ -113,20 +108,6 @@ func NewCollector() *Collector {
 			Name: "pangolin_kube_controller_instance_label_last_check_timestamp_seconds",
 			Help: "Unix timestamp of last instance label verification",
 		}),
-
-		GraceQueueDropped: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "pangolin_kube_controller_grace_queue_dropped_total",
-			Help: "Grace deletion queue items dropped due to queue overflow",
-		}),
-		GraceQueueDepth: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: "pangolin_kube_controller_grace_queue_depth",
-			Help: "Current depth of the grace deletion queue",
-		}),
-
-		LeaderState: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: "pangolin_kube_controller_leader_state",
-			Help: "Leader state of the controller (1=leader,0=follower,-1=leader election disabled)",
-		}),
 	}
 
 	reg.MustRegister(
@@ -143,9 +124,6 @@ func NewCollector() *Collector {
 		c.InstanceLabelDetectSuccess,
 		c.InstanceLabelDetectFailures,
 		c.InstanceLabelLastCheck,
-		c.GraceQueueDropped,
-		c.GraceQueueDepth,
-		c.LeaderState,
 	)
 
 	// Initialize OpenTelemetry metric exporter and instruments on the same registry.

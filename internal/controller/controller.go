@@ -48,13 +48,6 @@ type Controller struct {
 	graceDelOnce  sync.Once
 
 	exitRequested atomic.Bool
-	paused        atomic.Bool
-
-	runCtx    context.Context
-	runCancel context.CancelFunc
-
-	exitCode  atomic.Int32
-	lastError atomic.Value
 }
 
 const (
@@ -63,12 +56,6 @@ const (
 	headerETag            = "ETag"
 	headerAuthorization   = "Authorization"
 	PreviewLogFieldPrefix = "preview="
-)
-
-const (
-	ExitCodeSuccess        = 0
-	ExitCodeError          = 1
-	ExitCodeLeadershipLoss = 2
 )
 
 var resourceToKind = map[string]string{
@@ -154,15 +141,8 @@ func (c *Controller) Run(ctx context.Context) {
 func (c *Controller) RunLeaderElection(ctx context.Context) {
 	c.startGraceDeletionPool(ctx, c.cfg.GCWorkers)
 	if !c.cfg.LeaderEnabled {
-		if c.collector != nil {
-			c.collector.LeaderState.Set(-1)
-		}
-		c.runCtx, c.runCancel = context.WithCancel(ctx)
-		c.runLoop(c.runCtx)
+		c.runLoop(ctx)
 		return
-	}
-	if c.collector != nil {
-		c.collector.LeaderState.Set(0)
 	}
 	id := c.makeLeaderIdentity()
 	lock := &resourcelock.LeaseLock{
@@ -176,7 +156,6 @@ func (c *Controller) RunLeaderElection(ctx context.Context) {
 		},
 	}
 	lctx, cancel := context.WithCancel(ctx)
-	c.runCtx, c.runCancel = context.WithCancel(ctx)
 	leaderelection.RunOrDie(lctx, leaderelection.LeaderElectionConfig{
 		Lock:            lock,
 		ReleaseOnCancel: true,
@@ -206,15 +185,10 @@ func (c *Controller) handleLeadershipLoss(cancel context.CancelFunc) {
 	if strings.EqualFold(behavior, "exit") || behavior == "" {
 		logrus.Warn("Lost leadership; marking exit requested (ON_LOSE=exit)")
 		c.exitRequested.Store(true)
-		c.exitCode.Store(ExitCodeLeadershipLoss)
 		cancel()
-		if c.runCancel != nil {
-			c.runCancel()
-		}
 		return
 	}
 	if strings.EqualFold(behavior, "pause") {
-		c.paused.Store(true)
 		if c.collector != nil {
 			c.collector.Ready.Set(0)
 		}
@@ -223,23 +197,10 @@ func (c *Controller) handleLeadershipLoss(cancel context.CancelFunc) {
 	}
 	logrus.Warnf("Lost leadership; unknown ON_LOSE=%q, treating as exit", behavior)
 	c.exitRequested.Store(true)
-	c.exitCode.Store(ExitCodeLeadershipLoss)
 	cancel()
-	if c.runCancel != nil {
-		c.runCancel()
-	}
 }
 
 func (c *Controller) ExitRequested() bool { return c.exitRequested.Load() }
-
-func (c *Controller) ExitCode() int32 { return c.exitCode.Load() }
-
-func (c *Controller) LastError() error {
-	if err := c.lastError.Load(); err != nil {
-		return err.(error)
-	}
-	return nil
-}
 
 func (c *Controller) makeLeaderIdentity() string {
 	podName := os.Getenv("POD_NAME")

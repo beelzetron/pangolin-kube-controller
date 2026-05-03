@@ -1,9 +1,15 @@
 package config
 
 import (
-	"fmt"
 	"time"
 )
+
+// CertificateSecretRef identifies a Kubernetes TLS Secret to expose through
+// the /api/v1/certificates endpoint.
+type CertificateSecretRef struct {
+	SecretName string `json:"secretName" yaml:"secretName"`
+	Namespace  string `json:"namespace,omitempty" yaml:"namespace,omitempty"`
+}
 
 type Config struct {
 	PollInterval         time.Duration
@@ -54,8 +60,6 @@ type Config struct {
 	ClientQPS   float64
 	ClientBurst int
 
-	EnableCRDValidation bool
-
 	ReconcileParallel bool
 	ReconcileMax      int
 
@@ -76,6 +80,8 @@ type Config struct {
 	MetricsPlaintextOK       bool
 	MetricsReadHeaderTimeout time.Duration
 	AllowInsecureHTTP        bool
+
+	CertificateSecrets []CertificateSecretRef
 }
 
 func LoadFromEnv() *Config {
@@ -84,8 +90,5 @@ func LoadFromEnv() *Config {
 	populateInstanceLabelFromEnv(cfg)
 	mergeConfigFile(cfg)
 	cfg.normalize()
-	if err := cfg.Validate(); err != nil {
-		panic(fmt.Sprintf("invalid configuration: %v", err))
-	}
 	return cfg
 }

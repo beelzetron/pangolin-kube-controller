@@ -222,3 +222,92 @@ func TestMarkIngressClassProvidedUnset(t *testing.T) {
 		t.Error("IngressClassProvided should be false when INGRESS_CLASS is not set")
 	}
 }
+
+func TestParseCertificateSecretsEnvEmpty(t *testing.T) {
+	refs := parseCertificateSecretsEnv("")
+	if len(refs) != 0 {
+		t.Errorf("expected empty refs for empty input, got %v", refs)
+	}
+}
+
+func TestParseCertificateSecretsEnvNamespaceAndName(t *testing.T) {
+	refs := parseCertificateSecretsEnv("cert-manager/wildcard-example-tls")
+	if len(refs) != 1 {
+		t.Fatalf("expected 1 ref, got %d", len(refs))
+	}
+	if refs[0].SecretName != "wildcard-example-tls" {
+		t.Errorf("SecretName = %q, want wildcard-example-tls", refs[0].SecretName)
+	}
+	if refs[0].Namespace != "cert-manager" {
+		t.Errorf("Namespace = %q, want cert-manager", refs[0].Namespace)
+	}
+}
+
+func TestParseCertificateSecretsEnvNameOnly(t *testing.T) {
+	refs := parseCertificateSecretsEnv("app2-tls")
+	if len(refs) != 1 {
+		t.Fatalf("expected 1 ref, got %d", len(refs))
+	}
+	if refs[0].SecretName != "app2-tls" {
+		t.Errorf("SecretName = %q, want app2-tls", refs[0].SecretName)
+	}
+	if refs[0].Namespace != "" {
+		t.Errorf("Namespace should be empty, got %q", refs[0].Namespace)
+	}
+}
+
+func TestParseCertificateSecretsEnvMultiple(t *testing.T) {
+	refs := parseCertificateSecretsEnv("cert-manager/wildcard-example-tls,pangolin/app1-tls,app2-tls")
+	if len(refs) != 3 {
+		t.Fatalf("expected 3 refs, got %d", len(refs))
+	}
+	if refs[0].Namespace != "cert-manager" || refs[0].SecretName != "wildcard-example-tls" {
+		t.Errorf("refs[0] unexpected: %+v", refs[0])
+	}
+	if refs[1].Namespace != "pangolin" || refs[1].SecretName != "app1-tls" {
+		t.Errorf("refs[1] unexpected: %+v", refs[1])
+	}
+	if refs[2].Namespace != "" || refs[2].SecretName != "app2-tls" {
+		t.Errorf("refs[2] unexpected: %+v", refs[2])
+	}
+}
+
+func TestParseCertificateSecretsEnvSkipsEmptyParts(t *testing.T) {
+	refs := parseCertificateSecretsEnv(",, ,ns/sec,  ")
+	if len(refs) != 1 {
+		t.Fatalf("expected 1 ref, got %d: %v", len(refs), refs)
+	}
+	if refs[0].SecretName != "sec" || refs[0].Namespace != "ns" {
+		t.Errorf("unexpected ref: %+v", refs[0])
+	}
+}
+
+func TestParseCertificateSecretsEnvSkipsInvalidSlashFormat(t *testing.T) {
+	// If namespace or name is empty after slash split, the entry should be skipped
+	refs := parseCertificateSecretsEnv("/nonamespace,noname/")
+	if len(refs) != 0 {
+		t.Errorf("expected 0 refs for invalid slash entries, got %d: %v", len(refs), refs)
+	}
+}
+
+func TestLoadFromEnvCertificateSecretsDefault(t *testing.T) {
+	t.Setenv("CERTIFICATE_SECRETS", "")
+	cfg := LoadFromEnv()
+	if len(cfg.CertificateSecrets) != 0 {
+		t.Errorf("expected empty CertificateSecrets by default, got %v", cfg.CertificateSecrets)
+	}
+}
+
+func TestLoadFromEnvCertificateSecretsParsed(t *testing.T) {
+	t.Setenv("CERTIFICATE_SECRETS", "cert-manager/wildcard-tls,app-tls")
+	cfg := LoadFromEnv()
+	if len(cfg.CertificateSecrets) != 2 {
+		t.Fatalf("expected 2 CertificateSecrets, got %d", len(cfg.CertificateSecrets))
+	}
+	if cfg.CertificateSecrets[0].Namespace != "cert-manager" || cfg.CertificateSecrets[0].SecretName != "wildcard-tls" {
+		t.Errorf("unexpected first secret: %+v", cfg.CertificateSecrets[0])
+	}
+	if cfg.CertificateSecrets[1].Namespace != "" || cfg.CertificateSecrets[1].SecretName != "app-tls" {
+		t.Errorf("unexpected second secret: %+v", cfg.CertificateSecrets[1])
+	}
+}

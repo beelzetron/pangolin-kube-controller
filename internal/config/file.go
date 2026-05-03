@@ -10,12 +10,13 @@ import (
 )
 
 type fileConfig struct {
-	TraefikInstanceLabel       string `json:"traefikInstanceLabel" yaml:"traefikInstanceLabel"`
-	TraefikInstanceLabelKey    string `json:"traefikInstanceLabelKey" yaml:"traefikInstanceLabelKey"`
-	TraefikInstanceLabelValue  string `json:"traefikInstanceLabelValue" yaml:"traefikInstanceLabelValue"`
-	IngressClass               string `json:"ingressClass" yaml:"ingressClass"`
-	IngressClassLabelVerifyInt string `json:"ingressClassLabelVerifyInterval" yaml:"ingressClassLabelVerifyInterval"`
-	IngressClassLabelStrict    *bool  `json:"ingressClassLabelStrict" yaml:"ingressClassLabelStrict"`
+	TraefikInstanceLabel       string                 `json:"traefikInstanceLabel" yaml:"traefikInstanceLabel"`
+	TraefikInstanceLabelKey    string                 `json:"traefikInstanceLabelKey" yaml:"traefikInstanceLabelKey"`
+	TraefikInstanceLabelValue  string                 `json:"traefikInstanceLabelValue" yaml:"traefikInstanceLabelValue"`
+	IngressClass               string                 `json:"ingressClass" yaml:"ingressClass"`
+	IngressClassLabelVerifyInt string                 `json:"ingressClassLabelVerifyInterval" yaml:"ingressClassLabelVerifyInterval"`
+	IngressClassLabelStrict    *bool                  `json:"ingressClassLabelStrict" yaml:"ingressClassLabelStrict"`
+	CertificateSecrets         []CertificateSecretRef `json:"certificateSecrets" yaml:"certificateSecrets"`
 }
 
 func mergeConfigFile(cfg *Config) {
@@ -36,6 +37,7 @@ func mergeConfigFile(cfg *Config) {
 	mergeFileVerifyInterval(cfg, fc)
 	mergeFileStrict(cfg, fc)
 	mergeFileInstanceLabel(cfg, fc)
+	mergeFileCertificateSecrets(cfg, fc)
 }
 
 func mergeFileIngressClass(cfg *Config, fc fileConfig) {
@@ -90,5 +92,14 @@ func mergeFileInstanceLabel(cfg *Config, fc fileConfig) {
 	single := strings.TrimSpace(fc.TraefikInstanceLabel)
 	if single != "" {
 		applyKVPair(cfg, single)
+	}
+}
+
+func mergeFileCertificateSecrets(cfg *Config, fc fileConfig) {
+	if _, ok := os.LookupEnv("CERTIFICATE_SECRETS"); ok {
+		return // ENV takes precedence over config file
+	}
+	if len(fc.CertificateSecrets) > 0 {
+		cfg.CertificateSecrets = fc.CertificateSecrets
 	}
 }

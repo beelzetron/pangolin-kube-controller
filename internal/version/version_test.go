@@ -5,9 +5,26 @@ import (
 	"testing"
 )
 
-func TestVersionVarsAreDefined(t *testing.T) {
-	if Version == "" || Commit == "" || Date == "" {
-		t.Fatalf("version variables should be defined: Version=%q Commit=%q Date=%q", Version, Commit, Date)
+// TestVersionVarsDefaults verifies that the package-level version variables
+// equal their documented source-code defaults when the binary is not built
+// with -ldflags overrides (i.e. in the standard `go test` context).
+// This catches accidental changes to the default values in version.go.
+func TestVersionVarsDefaults(t *testing.T) {
+	tests := []struct {
+		name string
+		got  string
+		want string
+	}{
+		{"Version", Version, "dev"},
+		{"Commit", Commit, "none"},
+		{"Date", Date, "unknown"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.got != tt.want {
+				t.Errorf("%s default = %q, want %q", tt.name, tt.got, tt.want)
+			}
+		})
 	}
 }
 

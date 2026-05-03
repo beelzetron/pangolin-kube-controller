@@ -2,8 +2,7 @@
 
 Purpose: quick, non-developer friendly guide to what each Go file does and why it exists. Grouped by folder.
 
-## Notes
-
+Notes
 - “Tests” entries are unit/integration tests that verify the behavior described; names indicate focus.
 - CRD = Custom Resource Definition (Traefik’s Kubernetes objects such as IngressRoute, Middleware, TraefikService).
 
@@ -12,15 +11,8 @@ Purpose: quick, non-developer friendly guide to what each Go file does and why i
 - cmd/controller/main.go — The main package for the Pangolin Kube Controller application
 - cmd/controller/main_test.go — Tests main.
 - cmd/healthcheck/doc.go — Command healthcheck probes the controller's readiness endpoint and exits 0 on
-- cmd/healthcheck/main.go — Health probe binary. Runs liveness/readiness checks.
+- cmd/healthcheck/main.go — Entrypoint binary. Loads configuration and starts orchestration.
 - cmd/healthcheck/main_test.go — Tests main.
-
-## hack
-- hack/tools/doccheck/main.go — Command doccheck scans packages to report missing package docs and exported
-- hack/tools/doccheck/main_test.go — Tests main.
-- hack/tools/generate.go — Go source file.
-- hack/tools/genfilemap/main.go — Command genfilemap generates a Markdown overview of tracked Go files grouped
-- hack/tools/genfilemap/main_test.go — Tests main.
 
 ## internal/apply
 - internal/apply/apply_extra_test.go — Tests apply extra.
@@ -41,6 +33,11 @@ Purpose: quick, non-developer friendly guide to what each Go file does and why i
 - internal/apply/unstructured.go — Go source file.
 - internal/apply/unstructured_test.go — Tests unstructured.
 
+## internal/certificates
+- internal/certificates/certificates.go — Go source file.
+- internal/certificates/certificates_test.go — Tests certificates.
+- internal/certificates/doc.go — Package certificates provides the HTTP handler for the /api/v1/certificates
+
 ## internal/config
 - internal/config/config.go — Go source file.
 - internal/config/config_test.go — Tests config.
@@ -50,7 +47,6 @@ Purpose: quick, non-developer friendly guide to what each Go file does and why i
 - internal/config/env_test.go — Tests env.
 - internal/config/file.go — Go source file.
 - internal/config/normalize.go — Go source file.
-- internal/config/validate.go — Go source file.
 
 ## internal/controller
 - internal/controller/apply.go — Go source file.
@@ -88,7 +84,6 @@ Purpose: quick, non-developer friendly guide to what each Go file does and why i
 ## internal/kube
 - internal/kube/client.go — Go source file.
 - internal/kube/client_test.go — Tests client.
-- internal/kube/crd.go — Go source file.
 - internal/kube/doc.go — Package kube constructs Kubernetes clients used by the controller
 - internal/kube/labels/doc.go — Package labels resolves and verifies the Traefik instance label
 - internal/kube/labels/resolver.go — Go source file.
@@ -134,7 +129,7 @@ Purpose: quick, non-developer friendly guide to what each Go file does and why i
 - internal/orchestration/run_test.go — Tests run.
 
 ## internal/pangolin
-- internal/pangolin/doc.go — Package pangolin is reserved for future use
+- internal/pangolin/doc.go — Package pangolin provides the HTTP client for fetching configuration from
 
 ## internal/reconcile
 - internal/reconcile/doc.go — Package reconcile implements the core reconciliation phases for applying
@@ -217,4 +212,12 @@ Purpose: quick, non-developer friendly guide to what each Go file does and why i
 - test/e2e/offline_e2e_test.go — Tests offline e2e.
 - test/integration/controller_integration_test.go — Tests controller integration.
 - test/integration/suite_test.go — Tests suite.
+
+## tools
+- tools/doc.go — Package tools hosts go:generate directives and helper tools used to maintain
+- tools/doccheck/main.go — Command doccheck scans packages to report missing package docs and exported
+- tools/doccheck/main_test.go — Tests main.
+- tools/generate.go — Go source file.
+- tools/genfilemap/main.go — Command genfilemap generates a Markdown overview of tracked Go files grouped
+- tools/genfilemap/main_test.go — Tests main.
 

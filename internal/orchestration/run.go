@@ -16,6 +16,7 @@ import (
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"golang.org/x/sync/errgroup"
 
+	"pangolin-kube-controller/internal/certificates"
 	"pangolin-kube-controller/internal/config"
 	"pangolin-kube-controller/internal/controller"
 	inthttp "pangolin-kube-controller/internal/httpserver"
@@ -33,7 +34,6 @@ var (
 	newClients           = kube.NewClients
 	resolveInstanceLabel = labels.ResolveInstanceLabel
 	monitorInstanceLabel = labels.Monitor
-	checkCRDs            = kube.CheckCRDs
 )
 
 // controllerFacade defines the minimal surface from the service.Controller
@@ -180,13 +180,9 @@ func runControllerWithStarter(ctx context.Context, cfg *config.Config, httpSrv *
 		return err
 	}
 
-	if cfg.EnableCRDValidation {
-		logrus.Info("Checking for required Traefik CRDs...")
-		if err := checkCRDs(ctx, clients.Apiextensions); err != nil {
-			return fmt.Errorf("CRD validation failed: %w", err)
-		}
-		logrus.Info("All required Traefik CRDs present")
-	}
+	// Register the /api/v1/certificates endpoint backed by the Kubernetes client.
+	ctrlNs := certificates.ControllerNamespace(cfg.Namespace)
+	httpSrv.RegisterCertificatesHandler(certificates.Handler(clients.Kubernetes, cfg.CertificateSecrets, ctrlNs))
 
 	// Resolve Traefik instance label (ENV/Config or autodetect via IngressClass) before starting reconciliation
 	if err := resolveInstanceLabel(ctx, clients.Kubernetes, cfg, metricsCollector); err != nil {

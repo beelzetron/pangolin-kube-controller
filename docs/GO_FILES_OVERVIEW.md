@@ -2,7 +2,8 @@
 
 Purpose: quick, non-developer friendly guide to what each Go file does and why it exists. Grouped by folder.
 
-Notes
+## Notes
+
 - “Tests” entries are unit/integration tests that verify the behavior described; names indicate focus.
 - CRD = Custom Resource Definition (Traefik’s Kubernetes objects such as IngressRoute, Middleware, TraefikService).
 
@@ -11,8 +12,15 @@ Notes
 - cmd/controller/main.go — The main package for the Pangolin Kube Controller application
 - cmd/controller/main_test.go — Tests main.
 - cmd/healthcheck/doc.go — Command healthcheck probes the controller's readiness endpoint and exits 0 on
-- cmd/healthcheck/main.go — Entrypoint binary. Loads configuration and starts orchestration.
+- cmd/healthcheck/main.go — Health probe binary. Runs liveness/readiness checks.
 - cmd/healthcheck/main_test.go — Tests main.
+
+## hack
+- hack/tools/doccheck/main.go — Command doccheck scans packages to report missing package docs and exported
+- hack/tools/doccheck/main_test.go — Tests main.
+- hack/tools/generate.go — Go source file.
+- hack/tools/genfilemap/main.go — Command genfilemap generates a Markdown overview of tracked Go files grouped
+- hack/tools/genfilemap/main_test.go — Tests main.
 
 ## internal/apply
 - internal/apply/apply_extra_test.go — Tests apply extra.
@@ -47,6 +55,7 @@ Notes
 - internal/config/env_test.go — Tests env.
 - internal/config/file.go — Go source file.
 - internal/config/normalize.go — Go source file.
+- internal/config/validate.go — Go source file.
 
 ## internal/controller
 - internal/controller/apply.go — Go source file.
@@ -84,6 +93,7 @@ Notes
 ## internal/kube
 - internal/kube/client.go — Go source file.
 - internal/kube/client_test.go — Tests client.
+- internal/kube/crd.go — Go source file.
 - internal/kube/doc.go — Package kube constructs Kubernetes clients used by the controller
 - internal/kube/labels/doc.go — Package labels resolves and verifies the Traefik instance label
 - internal/kube/labels/resolver.go — Go source file.
@@ -212,12 +222,4 @@ Notes
 - test/e2e/offline_e2e_test.go — Tests offline e2e.
 - test/integration/controller_integration_test.go — Tests controller integration.
 - test/integration/suite_test.go — Tests suite.
-
-## tools
-- tools/doc.go — Package tools hosts go:generate directives and helper tools used to maintain
-- tools/doccheck/main.go — Command doccheck scans packages to report missing package docs and exported
-- tools/doccheck/main_test.go — Tests main.
-- tools/generate.go — Go source file.
-- tools/genfilemap/main.go — Command genfilemap generates a Markdown overview of tracked Go files grouped
-- tools/genfilemap/main_test.go — Tests main.
 

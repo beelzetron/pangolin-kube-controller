@@ -231,7 +231,8 @@ When section is done, confirm [SECTION NAME] is complete. Ask if ready to move t
 
 ### Near Completion
 
-As approaching completion (80%+ of sections done), announce intention to re-read the entire document and check for:- Flow and consistency across sections
+As approaching completion (80%+ of sections done), announce intention to re-read the entire document and check for:
+- Flow and consistency across sections
 - Redundancy or contradictions
 - Anything that feels like "slop" or generic filler
 - Whether every sentence carries weight

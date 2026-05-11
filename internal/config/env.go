@@ -111,3 +111,46 @@ func envFloat(k string, def float64) float64 {
 	}
 	return def
 }
+
+// parseCertificateSecretsEnv parses a comma-separated list of Secret references
+// of the form "namespace/secretName" or "secretName" (no namespace).
+func parseCertificateSecretsEnv(raw string) []CertificateSecretRef {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	var refs []CertificateSecretRef
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		slashCount := strings.Count(p, "/")
+		if slashCount == 0 {
+			refs = append(refs, CertificateSecretRef{SecretName: p})
+			continue
+		}
+		if slashCount != 1 {
+			logrus.Warnf("skipping token %q: invalid format (must be 'name' or 'namespace/name'), found %d slashes", p, slashCount)
+			continue
+		}
+		ns, name, ok := strings.Cut(p, "/")
+		if !ok {
+			logrus.Warnf("skipping token %q: failed to split namespace and name", p)
+			continue
+		}
+		ns = strings.TrimSpace(ns)
+		name = strings.TrimSpace(name)
+		if ns == "" {
+			logrus.Warnf("skipping token %q: empty namespace", p)
+			continue
+		}
+		if name == "" {
+			logrus.Warnf("skipping token %q: empty secret name", p)
+			continue
+		}
+		refs = append(refs, CertificateSecretRef{SecretName: name, Namespace: ns})
+	}
+	return refs
+}

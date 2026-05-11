@@ -180,6 +180,25 @@ func TestStartPlaintextSuccessAndShutdown(t *testing.T) {
 	}
 }
 
+func TestStartUsesDefaultAddrWhenEmpty(t *testing.T) {
+	cfg := &config.Config{MetricsAddr: "", EnablePprof: false}
+	s := NewServer(cfg, nil)
+	errCh := make(chan error, 1)
+	go func() { errCh <- s.Start() }()
+	time.Sleep(50 * time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	_ = s.Shutdown(ctx)
+	select {
+	case err := <-errCh:
+		if err != nil && err != http.ErrServerClosed {
+			t.Fatalf(errUnexpectedStartFmt, err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal(errTimeoutShutdown)
+	}
+}
+
 func TestStartLoopbackAddrNoRewrite(t *testing.T) {
 	cfg := &config.Config{MetricsAddr: loopbackAnyPort, EnablePprof: false}
 	s := NewServer(cfg, nil)
@@ -330,4 +349,36 @@ func TestServeTLSMissingFilesReturnsError(t *testing.T) {
 	cfg := &config.Config{MetricsTLSCertFile: "testdata/missing.crt", MetricsTLSKeyFile: "testdata/missing.key", MetricsAddr: ":0"}
 	s := NewServer(cfg, nil)
 	require.Error(t, s.Serve(ln))
+}
+
+func TestRegisterCertificatesHandler(t *testing.T) {
+	called := false
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		called = true
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte("[]"))
+	})
+
+	cfg := &config.Config{MetricsAddr: ":0"}
+	s := NewServer(cfg, nil)
+	s.RegisterCertificatesHandler(handler)
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/certificates", http.NoBody)
+	s.srv.Handler.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	require.True(t, called, "certificates handler should have been called")
+	require.Equal(t, "[]", rr.Body.String())
+}
+
+func TestCertificatesEndpointNotFoundWhenNotRegistered(t *testing.T) {
+	cfg := &config.Config{MetricsAddr: ":0"}
+	s := NewServer(cfg, nil)
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/certificates", http.NoBody)
+	s.srv.Handler.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusNotFound, rr.Code)
 }

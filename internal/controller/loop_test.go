@@ -113,23 +113,33 @@ func TestComputeIfNoneMatch(t *testing.T) {
 }
 
 func TestUpdateSignaturesAfterSuccess(t *testing.T) {
+	// Pre-computed SHA-256 hex digests for the fixed test inputs below.
+	// sha256("body")  = 230d8358dc8e8890b4c58deeb62912ee2f20357ae92a5cc861b98e68fe31acb5
+	// sha256("body2") = 9392684867789a5a45bce5851e1270ef1a26a35c4b5ea37e91d6d714a95653b0
+	const hashOfBody = "230d8358dc8e8890b4c58deeb62912ee2f20357ae92a5cc861b98e68fe31acb5"
+	const hashOfBody2 = "9392684867789a5a45bce5851e1270ef1a26a35c4b5ea37e91d6d714a95653b0"
+
 	c := newCtrlForTest()
 	var lastETag string
 	var lastIsHeader bool
 	var lastHash string
+
+	// First call: ETag provided — should be recorded as a header ETag.
 	c.updateSignaturesAfterSuccess(testETagV1, []byte("body"), &lastETag, &lastIsHeader, &lastHash)
 	if !lastIsHeader || lastETag != testETagV1 {
 		t.Fatalf("etag not recorded correctly: %v %q", lastIsHeader, lastETag)
 	}
-	if lastHash == "" {
-		t.Fatalf("hash not set")
+	if lastHash != hashOfBody {
+		t.Fatalf("hash mismatch after first call: got %q, want %q", lastHash, hashOfBody)
 	}
+
+	// Second call: empty ETag — should clear the header ETag flags and update hash.
 	c.updateSignaturesAfterSuccess("", []byte("body2"), &lastETag, &lastIsHeader, &lastHash)
 	if lastIsHeader || lastETag != "" {
 		t.Fatalf("etag header flags not cleared: %v %q", lastIsHeader, lastETag)
 	}
-	if lastHash == "" {
-		t.Fatalf("hash not updated")
+	if lastHash != hashOfBody2 {
+		t.Fatalf("hash mismatch after second call: got %q, want %q", lastHash, hashOfBody2)
 	}
 }
 

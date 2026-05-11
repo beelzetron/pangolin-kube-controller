@@ -168,6 +168,7 @@ Inform them they can answer in shorthand or just indicate what's important to co
 ### Step 2: Brainstorming
 
 For the [SECTION NAME] section, brainstorm [5-20] things that might be included, depending on the section's complexity. Look for:
+
 - Context shared that might have been forgotten
 - Angles or considerations not yet mentioned
 
@@ -178,6 +179,7 @@ Generate 5-20 numbered options based on section complexity. At the end, offer to
 Ask which points should be kept, removed, or combined. Request brief justifications to help learn priorities for the next sections.
 
 Provide examples:
+
 - "Keep 1,4,7,9"
 - "Remove 3 (duplicates 1)"
 - "Remove 6 (audience already knows this)"
@@ -211,6 +213,7 @@ Provide a note: Instead of editing the doc directly, ask them to indicate what t
 ### Step 6: Iterative Refinement
 
 As user provides feedback:
+
 - Use `str_replace` to make edits (never reprint the whole doc)
 - **If using artifacts:** Provide link to artifact after each edit
 - **If using files:** Just confirm edits are complete
@@ -297,7 +300,7 @@ Loop back to refinement for problematic sections.
 
 The user will need to do the testing manually.
 
-### Step 1: Predict Reader Questions
+### Step 1: Set Up Reader Testing
 
 Ask what questions people might ask when trying to discover this document. What would they type into Claude.ai?
 
@@ -306,11 +309,13 @@ Generate 5-10 questions that readers would realistically ask.
 ### Step 2: Setup Testing
 
 Provide testing instructions:
-1. Open a fresh Claude conversation: https://claude.ai
+
+1. Open a fresh Claude conversation: [https://claude.ai](https://claude.ai)
 2. Paste or share the document content (if using a shared doc platform with connectors enabled, provide the link)
 3. Ask Reader Claude the generated questions
 
 For each question, instruct Reader Claude to provide:
+
 - The answer
 - Whether anything was ambiguous or unclear
 - What knowledge/context the doc assumes is already known
@@ -320,6 +325,7 @@ Check if Reader Claude gives correct answers or misinterprets anything.
 ### Step 3: Additional Checks
 
 Also ask Reader Claude:
+
 - "What in this doc might be ambiguous or unclear to readers?"
 - "What knowledge or context does this doc assume readers already have?"
 - "Are there any internal contradictions or inconsistencies?"
@@ -349,6 +355,7 @@ Ask if they want one more review, or if the work is done.
 
 **If user wants final review, provide it. Otherwise:**
 Announce document completion. Provide a few final tips:
+
 - Consider linking this conversation in an appendix so readers can see how the doc was developed
 - Use appendices to provide depth without bloating the main doc
 - Update the doc as feedback is received from real readers

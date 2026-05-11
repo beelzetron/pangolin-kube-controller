@@ -46,10 +46,8 @@ func newDefaults() *Config {
 		HTTPMaxIdleConnsPerHost: envInt("HTTP_MAX_IDLE_CONNS_PER_HOST", 100),
 		HTTPIdleConnTimeout:     envDuration("HTTP_IDLE_CONN_TIMEOUT", 90*time.Second),
 
-		ClientQPS:   envFloat("CLIENT_QPS", 20),
-		ClientBurst: envInt("CLIENT_BURST", 50),
-
-		EnableCRDValidation: envBool("ENABLE_CRD_VALIDATION", true),
+		ClientQPS:   envFloat("CLIENT_QPS", 0),
+		ClientBurst: envInt("CLIENT_BURST", 0),
 
 		ReconcileParallel: envBool("RECONCILE_PARALLEL", false),
 		ReconcileMax:      envInt("RECONCILE_MAX", 3),
@@ -71,5 +69,7 @@ func newDefaults() *Config {
 		MetricsPlaintextOK:       envBool("METRICS_PLAINTEXT_OK", false),
 		MetricsReadHeaderTimeout: envDuration("METRICS_READ_HEADER_TIMEOUT", 3*time.Second),
 		AllowInsecureHTTP:        envBool("CONFIG_ALLOW_INSECURE_HTTP", false),
+
+		CertificateSecrets: parseCertificateSecretsEnv(envString("CERTIFICATE_SECRETS", "")),
 	}
 }

@@ -143,10 +143,10 @@ func eventuallyGet(t *testing.T, res dynamic.ResourceInterface, name string) *un
 	var out *unstructured.Unstructured
 	require.NoError(t, wait.PollUntilContextTimeout(context.Background(), 100*time.Millisecond, 30*time.Second, true, func(ctx context.Context) (bool, error) {
 		obj, err := res.Get(ctx, name, metav1.GetOptions{})
-		if apierrors.IsNotFound(err) {
-			return false, nil
-		}
 		if err != nil {
+			if apierrors.IsNotFound(err) {
+				return false, nil // resource not yet created, keep polling
+			}
 			return false, err
 		}
 		out = obj

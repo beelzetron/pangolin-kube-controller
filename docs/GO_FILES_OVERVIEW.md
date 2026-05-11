@@ -41,6 +41,11 @@ Purpose: quick, non-developer friendly guide to what each Go file does and why i
 - internal/apply/unstructured.go — Go source file.
 - internal/apply/unstructured_test.go — Tests unstructured.
 
+## internal/certificates
+- internal/certificates/certificates.go — Go source file.
+- internal/certificates/certificates_test.go — Tests certificates.
+- internal/certificates/doc.go — Package certificates provides the HTTP handler for the /api/v1/certificates
+
 ## internal/config
 - internal/config/config.go — Go source file.
 - internal/config/config_test.go — Tests config.
@@ -134,7 +139,7 @@ Purpose: quick, non-developer friendly guide to what each Go file does and why i
 - internal/orchestration/run_test.go — Tests run.
 
 ## internal/pangolin
-- internal/pangolin/doc.go — Package pangolin is reserved for future use
+- internal/pangolin/doc.go — Package pangolin provides the HTTP client for fetching configuration from
 
 ## internal/reconcile
 - internal/reconcile/doc.go — Package reconcile implements the core reconciliation phases for applying

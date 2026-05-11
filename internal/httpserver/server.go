@@ -18,6 +18,7 @@ import (
 type Server struct {
 	cfg       *config.Config
 	srv       *http.Server
+	mux       *http.ServeMux
 	readiness func() bool
 }
 
@@ -34,9 +35,16 @@ func NewServer(cfg *config.Config, metricsHandler http.Handler) *Server {
 	}
 
 	mux := newServeMux(cfg, metricsHandler, func() bool { return s.readiness() })
+	s.mux = mux
 	s.srv.Handler = mux
 
 	return s
+}
+
+// RegisterCertificatesHandler registers the provided handler at
+// GET /api/v1/certificates. It must be called before the server is started.
+func (s *Server) RegisterCertificatesHandler(h http.Handler) {
+	s.mux.Handle("/api/v1/certificates", h)
 }
 
 func (s *Server) SetReadinessFunc(fn func() bool) {

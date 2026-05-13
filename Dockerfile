@@ -1,6 +1,6 @@
-# syntax=docker/dockerfile:1@sha256:b6afd42430b15f2d2a4c5a02b919e98a525b785b1aaff16747d2f623364e39b6
+# syntax=docker/dockerfile:1@sha256:2780b5c3bab67f1f76c781860de469442999ed1a0d7992a5efdf2cffc0e3d769
 ##### Stage 1: Build (pinned & minimal, multi-arch) #####
-FROM --platform=$BUILDPLATFORM golang@sha256:c2a1f7b2095d046ae14b286b18413a05bb82c9bca9b25fe7ff5efef0f0826166 AS build
+FROM --platform=$BUILDPLATFORM golang@sha256:313faae491b410a35402c05d35e7518ae99103d957308e940e1ae2cfa0aac29b AS build
 #1.26.2-alpine
 
 WORKDIR /src
@@ -45,7 +45,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
       ./cmd/healthcheck
 
 ##### Stage 2: Distroless runtime #####
-FROM gcr.io/distroless/static-debian12@sha256:2b7c93f6d6648c11f0e80a48558c8f77885eb0445213b8e69a6a0d7c89fc6ae4
+FROM gcr.io/distroless/static-debian12@sha256:20bc6c0bc4d625a22a8fde3e55f6515709b32055ef8fb9cfbddaa06d1760f838
 
 ARG VERSION=0.0.0
 ARG BUILD_DATE="2025-01-01T00:00:00Z"

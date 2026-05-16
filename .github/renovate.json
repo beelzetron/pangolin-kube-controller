@@ -46,6 +46,14 @@
       "postUpdateOptions": ["gomodTidy", "gomodUpdateImportPaths"]
     },
     {
+      "description": "Keep Go Docker builder images on Alpine-based tags only",
+      "matchManagers": ["dockerfile"],
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["golang"],
+      "matchFileNames": ["Dockerfile", "Dockerfile.scratch"],
+      "allowedVersions": "/^1\\.[0-9]+\\.[0-9]+-alpine$/"
+    },
+    {
       "description": "Group all Dockerfile image updates into a single PR; add docker label; pin digests",
       "matchManagers": ["dockerfile"],
       "groupName": "docker",
@@ -66,4 +74,3 @@
     }
   ]
 }
-

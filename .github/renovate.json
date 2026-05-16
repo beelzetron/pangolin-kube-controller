@@ -6,8 +6,6 @@
     ":semanticCommitTypeAll(chore)",
     ":semanticCommitScope(deps)",
     ":separateMajorReleases",
-    "helpers:pinGitHubActionDigests",
-    "docker:pinDigests",
     "security:openssf-scorecard"
   ],
   "enabled": true,
@@ -19,7 +17,6 @@
   "reviewers": ["marcschaeferger"],
   "prConcurrentLimit": 20,
   "prHourlyLimit": 6,
-  "pinDigests": true,
   "osvVulnerabilityAlerts": true,
   "vulnerabilityAlerts": {
     "schedule": [],

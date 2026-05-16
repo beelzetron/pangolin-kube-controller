@@ -26,6 +26,23 @@
     "dependencyDashboardApproval": false,
     "minimumReleaseAge": null
   },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Update digest-only Go builder image using Alpine tag metadata comments",
+      "managerFilePatterns": [
+        "/^Dockerfile$/",
+        "/^Dockerfile\\.scratch$/"
+      ],
+      "matchStrings": [
+        "FROM\\s+--platform=\\$BUILDPLATFORM\\s+golang@(?<currentDigest>sha256:[a-f0-9]{64})\\s+AS\\s+build\\s*\\n#\\s*renovate:\\s*datasource=docker\\s+depName=golang\\s+versioning=docker\\s*\\n#\\s*renovate-version:\\s*(?<currentValue>[^\\s]+)"
+      ],
+      "depNameTemplate": "golang",
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "docker",
+      "autoReplaceStringTemplate": "FROM --platform=$BUILDPLATFORM golang@{{#if newDigest}}{{{newDigest}}}{{else}}{{{currentDigest}}}{{/if}} AS build\n# renovate: datasource=docker depName=golang versioning=docker\n# renovate-version: {{{newValue}}}"
+    }
+  ],
   "packageRules": [
     {
       "description": "Add OpenSSF Scorecard badge to PR tables",
@@ -46,12 +63,26 @@
       "postUpdateOptions": ["gomodTidy", "gomodUpdateImportPaths"]
     },
     {
-      "description": "Keep Go Docker builder images on Alpine-based tags only",
+      "description": "Disable built-in Dockerfile updates for golang because digest-only builder image is managed by custom regex comments",
       "matchManagers": ["dockerfile"],
       "matchDatasources": ["docker"],
       "matchPackageNames": ["golang"],
       "matchFileNames": ["Dockerfile", "Dockerfile.scratch"],
-      "allowedVersions": "/^1\\.[0-9]+\\.[0-9]+-alpine$/"
+      "enabled": false
+    },
+    {
+      "description": "Keep Go builder image updates on Go 1.x Alpine patch tags only",
+      "matchManagers": ["custom.regex"],
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["golang"],
+      "matchFileNames": ["Dockerfile", "Dockerfile.scratch"],
+      "allowedVersions": "/^1\\.[0-9]+\\.[0-9]+-alpine$/",
+      "groupName": "docker",
+      "addLabels": ["docker"],
+      "separateMinorPatch": false,
+      "separateMajorMinor": false,
+      "separateMultipleMajor": false,
+      "pinDigests": true
     },
     {
       "description": "Group all Dockerfile image updates into a single PR; add docker label; pin digests",

@@ -1,7 +1,6 @@
 # syntax=docker/dockerfile:1@sha256:2780b5c3bab67f1f76c781860de469442999ed1a0d7992a5efdf2cffc0e3d769
 ##### Stage 1: Build (pinned & minimal, multi-arch) #####
-FROM --platform=$BUILDPLATFORM golang@sha256:313faae491b410a35402c05d35e7518ae99103d957308e940e1ae2cfa0aac29b AS build
-#1.26.2-alpine
+FROM --platform=$BUILDPLATFORM golang@sha256:91eda9776261207ea25fd06b5b7fed8d397dd2c0a283e77f2ab6e91bfa71079d AS build
 
 WORKDIR /src
 

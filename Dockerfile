@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1@sha256:87999aa3d42bdc6bea60565083ee17e86d1f3339802f543c0d03998580f9cb89
 ##### Stage 1: Build (pinned & minimal, multi-arch) #####
-FROM --platform=$BUILDPLATFORM golang@sha256:3ad57304ad93bbec8548a0437ad9e06a455660655d9af011d58b993f6f615648 AS build
+FROM --platform=$BUILDPLATFORM golang@sha256:0178a641fbb4858c5f1b48e34bdaabe0350a330a1b1149aabd498d0699ff5fb2 AS build
 # renovate: datasource=docker depName=golang versioning=docker
-# renovate-version: 1.26.4-alpine
+# renovate-version: 1.26.5-alpine
 
 WORKDIR /src
 
@@ -46,7 +46,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
       ./cmd/healthcheck
 
 ##### Stage 2: Distroless runtime #####
-FROM gcr.io/distroless/static-debian12@sha256:9c346e4be81b5ca7ff31a0d89eaeade58b0f95cfd3baed1f36083ddb47ca3160
+FROM gcr.io/distroless/static-debian12@sha256:61b7ccecebc7c474a531717de80a94709d20547cdcdaf740c25876f2a8e38b44
 
 ARG VERSION=0.0.0
 ARG BUILD_DATE="2025-01-01T00:00:00Z"

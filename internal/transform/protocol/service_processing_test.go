@@ -109,7 +109,7 @@ func TestProcessEmptyServiceWithAndWithoutLBURL(t *testing.T) {
 
 func TestProcessNonEmptyServiceConvertToK8sService(t *testing.T) {
 	in := json.RawMessage([]byte(`{"loadBalancer":{"servers":[{"url":"http://svc.ns.svc:80"}]}}`))
-	out := processNonEmptyService("svc", in)
+	out := processNonEmptyService(&config.Config{}, "svc", in)
 	var m map[string]interface{}
 	require.NoError(t, json.Unmarshal(out, &m), "unmarshal should succeed")
 	require.Contains(t, m, "weighted")

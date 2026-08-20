@@ -61,6 +61,9 @@ func newDefaults() *Config {
 		TraefikLBScheme: envString("TRAEFIK_LB_SCHEME", "http"),
 		TraefikLBPort:   envString("TRAEFIK_LB_PORT", ""),
 
+		GatewayServiceName: envString("GATEWAY_SERVICE_NAME", ""),
+		GatewayServicePort: envInt("GATEWAY_SERVICE_PORT", 3002),
+
 		MetricsAddr:              envString("METRICS_ADDR", ":9090"),
 		DisableLivez:             envBool("DISABLE_LIVEZ", false),
 		EnablePprof:              envBool("ENABLE_PPROF", false),

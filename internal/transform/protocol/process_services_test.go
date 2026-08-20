@@ -213,3 +213,84 @@ func TestProcessServicesPreservesNonConvertible(t *testing.T) {
 	require.NoError(t, json.Unmarshal(result["multi-svc"], &spec))
 	require.NotContains(t, spec, "weighted", "non-uniform targets must not be converted")
 }
+
+// ---- short-name (in-cluster) service URL resolution --------------------------
+
+func TestProcessServicesShortNameResolvesToTargetNamespace(t *testing.T) {
+	t.Parallel()
+
+	// Pangolin references in-cluster app Services by bare name (no FQDN), e.g.
+	// http://pangolin:3002. With TARGET_NAMESPACE set, the controller must
+	// resolve the bare name against its own namespace (K8s in-cluster DNS) and
+	// emit a Traefik v3-valid weighted reference — NOT a bare loadBalancer.
+	cfg := &config.Config{Namespace: "pangolin"}
+	raw := json.RawMessage(`{"loadBalancer":{"servers":[{"url":"http://pangolin:3002"}]}}`)
+	services := map[string]json.RawMessage{"bg-r1-ui-service": raw}
+	result := ProcessServices(cfg, services)
+
+	var spec map[string]interface{}
+	require.NoError(t, json.Unmarshal(result["bg-r1-ui-service"], &spec))
+	require.Contains(t, spec, "weighted", "short-name k8s service must be converted to weighted")
+	require.NotContains(t, spec, "loadBalancer")
+	require.IsType(t, map[string]interface{}{}, spec["weighted"])
+	entry, ok := spec["weighted"].(map[string]interface{})["services"].([]interface{})[0].(map[string]interface{})
+	require.True(t, ok)
+	require.Equal(t, "pangolin", entry["name"])
+	require.Equal(t, "pangolin", entry["namespace"])
+	require.Equal(t, float64(3002), entry["port"])
+}
+
+func TestProcessServicesShortNameWithoutNamespacePassthrough(t *testing.T) {
+	t.Parallel()
+
+	// Without a configured namespace we cannot resolve a bare name; the raw
+	// spec must be preserved (no panic, no invalid rewrite).
+	raw := json.RawMessage(`{"loadBalancer":{"servers":[{"url":"http://mystery:8080"}]}}`)
+	result := ProcessServices(&config.Config{}, map[string]json.RawMessage{"bare": raw})
+	var spec map[string]interface{}
+	require.NoError(t, json.Unmarshal(result["bare"], &spec))
+	require.NotContains(t, spec, "weighted")
+	require.Contains(t, spec, "loadBalancer")
+}
+
+// ---- empty loadBalancer.servers (browser-gateway backend synthesis) ---------
+
+func TestProcessServicesEmptyServerGetsGatewayBackend(t *testing.T) {
+	t.Parallel()
+
+	// Pangolin emits {"loadBalancer":{"servers":[]}} for browser-SSH/RDP/VNC
+	// gateway resources. With GATEWAY_SERVICE_NAME configured, the controller
+	// must synthesize a Traefik v3-valid weighted backend pointing at the
+	// Pangolin app Service in the target namespace (the /gateway/* frontend).
+	cfg := &config.Config{
+		Namespace:          "pangolin",
+		GatewayServiceName: "pangolin",
+		GatewayServicePort: 3002,
+	}
+	raw := json.RawMessage(`{"loadBalancer":{"servers":[]}}`)
+	services := map[string]json.RawMessage{"bg-r1-ssh-service": raw}
+	result := ProcessServices(cfg, services)
+
+	var spec map[string]interface{}
+	require.NoError(t, json.Unmarshal(result["bg-r1-ssh-service"], &spec))
+	require.Contains(t, spec, "weighted", "empty loadBalancer must be rewritten to a weighted gateway backend")
+	require.NotContains(t, spec, "loadBalancer")
+	entry, ok := spec["weighted"].(map[string]interface{})["services"].([]interface{})[0].(map[string]interface{})
+	require.True(t, ok)
+	require.Equal(t, "pangolin", entry["name"])
+	require.Equal(t, "pangolin", entry["namespace"])
+	require.Equal(t, "Service", entry["kind"])
+	require.Equal(t, float64(3002), entry["port"])
+}
+
+func TestProcessServicesEmptyServerWithoutConfigPassthrough(t *testing.T) {
+	t.Parallel()
+
+	// Backward-compatible default: no GATEWAY_SERVICE_NAME -> leave spec as-is.
+	raw := json.RawMessage(`{"loadBalancer":{"servers":[]}}`)
+	result := ProcessServices(&config.Config{}, map[string]json.RawMessage{"ssh": raw})
+	var spec map[string]interface{}
+	require.NoError(t, json.Unmarshal(result["ssh"], &spec))
+	require.NotContains(t, spec, "weighted")
+	require.Contains(t, spec, "loadBalancer")
+}

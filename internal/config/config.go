@@ -72,6 +72,15 @@ type Config struct {
 	TraefikLBScheme string
 	TraefikLBPort   string
 
+	// GatewayService* name the Kubernetes Service in the controller's own
+	// namespace that serves the Pangolin app frontend/gateway (e.g. browser
+	// SSH /gateway/ssh which the app itself terminates). Used to synthesize a
+	// Traefik v3-valid weighted backend when Pangolin emits an empty
+	// loadBalancer.servers list for a service (browser gateway resources).
+	// Leave unset ("") to keep the empty spec as-is instead of synthesizing.
+	GatewayServiceName string
+	GatewayServicePort int
+
 	MetricsAddr              string
 	DisableLivez             bool
 	EnablePprof              bool

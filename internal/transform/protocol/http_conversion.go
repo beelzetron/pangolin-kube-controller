@@ -34,20 +34,29 @@ func ProcessServices(cfg *config.Config, services map[string]json.RawMessage) ma
 func processSingleService(cfg *config.Config, name string, raw json.RawMessage) json.RawMessage {
 	trim := strings.TrimSpace(string(raw))
 	if trim != "" && trim != "{}" {
-		return processNonEmptyService(name, raw)
+		return processNonEmptyService(cfg, name, raw)
 	}
 	return processEmptyService(cfg, name, raw)
 }
 
-func processNonEmptyService(name string, raw json.RawMessage) json.RawMessage {
+func processNonEmptyService(cfg *config.Config, name string, raw json.RawMessage) json.RawMessage {
 	var spec map[string]interface{}
 	if err := json.Unmarshal(raw, &spec); err == nil {
-		if target, ok := convertLoadBalancerToK8sService(spec); ok {
+		if target, ok := convertLoadBalancerToK8sService(cfg, spec); ok {
 			if b, err := json.Marshal(spec); err == nil {
 				raw = b
 				logrus.Infof("TraefikService %s converted to Kubernetes Service %s/%s port=%d scheme=%s", name, target.namespace, target.name, target.port, target.scheme)
 			} else {
 				logrus.Warnf("TraefikService %s conversion marshal failed: %v", name, err)
+			}
+		} else if isEmptyLoadBalancer(spec) && cfg != nil && cfg.GatewayServiceName != "" {
+			if rewriteAsGatewayService(spec, cfg) {
+				if b, err := json.Marshal(spec); err == nil {
+					raw = b
+					logrus.Infof("TraefikService %s: empty loadBalancer resolved to gateway Service %s/%s port=%d", name, cfg.Namespace, cfg.GatewayServiceName, cfg.GatewayServicePort)
+				} else {
+					logrus.Warnf("TraefikService %s gateway rewrite marshal failed: %v", name, err)
+				}
 			}
 		} else if urls := extractServiceURLs(spec); len(urls) > 0 {
 			logrus.Infof("TraefikService %s servers=%v", name, urls)
@@ -109,12 +118,19 @@ func buildTraefikServiceSpec(url string) json.RawMessage {
 	return b
 }
 
-func convertLoadBalancerToK8sService(spec map[string]interface{}) (*kubeServiceTarget, bool) {
+func convertLoadBalancerToK8sService(cfg *config.Config, spec map[string]interface{}) (*kubeServiceTarget, bool) {
 	lbServers, ok := extractLBServers(spec)
 	if !ok {
 		return nil, false
 	}
 	target, ok := parseUniformServiceTargets(lbServers)
+	if !ok && cfg != nil && cfg.Namespace != "" {
+		// Retry after normalizing bare in-cluster service names (e.g. "pangolin")
+		// to their FQDN <name>.<namespace>.svc, per Kubernetes in-cluster DNS.
+		if rewriteShortNameHosts(lbServers, cfg.Namespace) {
+			target, ok = parseUniformServiceTargets(lbServers)
+		}
+	}
 	if !ok || target == nil {
 		return nil, false
 	}
@@ -130,6 +146,83 @@ func convertLoadBalancerToK8sService(spec map[string]interface{}) (*kubeServiceT
 	spec["weighted"] = map[string]interface{}{"services": []interface{}{serviceEntry}}
 	delete(spec, "loadBalancer")
 	return target, true
+}
+
+// rewriteShortNameHosts rewrites loadBalancer server URLs that reference a bare
+// in-cluster service name (no dots, e.g. "http://pangolin:3002") into their
+// FQDN form <name>.<namespace>.svc using the controller's target namespace —
+// matching Kubernetes in-cluster DNS semantics (a bare name resolves in the
+// pod's own namespace). Hosts that are already qualified (FQDN or IP) are left
+// untouched. Returns true if every server URL used for FQDN resolution was
+// rewritten (caller still runs the strict parser, which remains authoritative).
+func rewriteShortNameHosts(servers []interface{}, namespace string) bool {
+	if namespace == "" {
+		return false
+	}
+	changed := false
+	for _, srv := range servers {
+		srvMap, ok := srv.(map[string]interface{})
+		if !ok {
+			return false
+		}
+		rawURL, ok := srvMap["url"].(string)
+		if !ok || rawURL == "" {
+			return false
+		}
+		parsed, err := netURLParse(rawURL)
+		if err != nil {
+			return false
+		}
+		host := parsed.Hostname()
+		if host == "" || strings.Contains(host, ".") {
+			continue // already qualified
+		}
+		fqdn := host + "." + namespace + ".svc"
+		if p := parsed.Port(); p != "" {
+			fqdn += ":" + p
+		}
+		srvMap["url"] = parsed.Scheme + "://" + fqdn
+		changed = true
+	}
+	return changed
+}
+
+// isEmptyLoadBalancer reports whether the spec is a TraefikService whose
+// loadBalancer carries an empty (but present) servers list — Pangolin's
+// output shape for browser-gateway resources (SSH/RDP/VNC), whose backend is
+// the Pangolin app Service in the controller's own namespace.
+func isEmptyLoadBalancer(spec map[string]interface{}) bool {
+	if len(spec) != 1 {
+		return false
+	}
+	lb, ok := spec["loadBalancer"].(map[string]interface{})
+	if !ok {
+		return false
+	}
+	if len(lb) != 1 {
+		return false
+	}
+	servers, ok := lb["servers"].([]interface{})
+	return ok && len(servers) == 0
+}
+
+// rewriteAsGatewayService rewrites an empty-loadBalancer TraefikService into a
+// Traefik v3-valid weighted service referencing the configured gateway Service
+// in the controller's target namespace. This is the CRD-native equivalent of
+// backing the browser-gateway route onto the Pangolin app Service.
+func rewriteAsGatewayService(spec map[string]interface{}, cfg *config.Config) bool {
+	if cfg == nil || cfg.GatewayServiceName == "" || cfg.Namespace == "" {
+		return false
+	}
+	serviceEntry := map[string]interface{}{
+		"name":      cfg.GatewayServiceName,
+		"namespace": cfg.Namespace,
+		"kind":      "Service",
+		"port":      cfg.GatewayServicePort,
+	}
+	spec["weighted"] = map[string]interface{}{"services": []interface{}{serviceEntry}}
+	delete(spec, "loadBalancer")
+	return true
 }
 
 // extractLBServers validates top-level loadBalancer shape & returns servers list.
